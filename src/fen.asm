@@ -20,6 +20,66 @@ extern piece_chars
 extern compute_hash, init_hash_history, record_hash
 extern parse_int
 extern pos_bb_init
+extern pl_dirty
+extern print_number
+
+section .rodata
+fen_err_rank_prefix: db "info string ERROR invalid FEN rank ", 0
+fen_err_rank_suffix: db ": expected 8 squares", 10, 0
+
+section .text
+
+; ============================================================
+; fen_write_cstr - vypise null-terminated retazec na stdout
+; Vstup: rdi = ukazatel na retazec
+; ============================================================
+fen_write_cstr:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+
+    mov rbx, rdi
+    xor rcx, rcx
+.len_loop:
+    cmp byte [rbx + rcx], 0
+    je .write
+    inc rcx
+    jmp .len_loop
+
+.write:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, rbx
+    mov rdx, rcx
+    syscall
+
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
+
+; ============================================================
+; fen_report_rank_error - vypise chybu neplatneho ranku FEN
+; Vstup: rax = cislo ranku (1..8)
+; ============================================================
+fen_report_rank_error:
+    push rax
+
+    lea rdi, [rel fen_err_rank_prefix]
+    call fen_write_cstr
+
+    pop rax
+    call print_number
+
+    lea rdi, [rel fen_err_rank_suffix]
+    call fen_write_cstr
+    ret
 
 ; ============================================================
 ; fen_piece_char_to_byte - prevedie znak FEN figúrky na bajt
@@ -53,12 +113,11 @@ fen_piece_char_to_byte:
 ; ============================================================
 ; parse_fen_board - naplní board[64] z prvej časti FEN
 ; Vstup: rdi = ukazateľ na board field reťazec
+; Vystup: rax = 0 OK, 1 chyba; pri chybe rdx = cislo ranku (1..8)
 ; ============================================================
 parse_fen_board:
-    push rax
     push rbx
     push rcx
-    push rdx
     push rsi
     push rdi
 
@@ -76,9 +135,9 @@ parse_fen_board:
 .loop:
     movzx rax, byte [rdi]
     test rax, rax
-    jz .done
+    jz .end_board
     cmp rax, ' '
-    je .done
+    je .end_board
     cmp rax, '/'
     je .next_rank
 
@@ -89,17 +148,21 @@ parse_fen_board:
     ; prázdne políčka
     sub rax, '0'
     add rcx, rax
+    cmp rcx, 8
+    ja .error_rank
     jmp .next_char
 
 .piece:
     call fen_piece_char_to_byte
     test rax, rax
-    jz .next_char
+    jz .error
+    cmp rcx, 8
+    jae .error_rank
     mov rdx, rbx
     shl rdx, 3
     add rdx, rcx
     cmp rdx, 64
-    jae .next_char
+    jae .error
     lea rsi, [board]
     mov [rsi + rdx], al
     inc rcx
@@ -109,17 +172,38 @@ parse_fen_board:
     jmp .loop
 
 .next_rank:
+    cmp rcx, 8
+    jne .error_rank
+    cmp rbx, 0
+    jle .error
     dec rbx
     xor rcx, rcx
     inc rdi
     jmp .loop
 
+.end_board:
+    cmp rcx, 8
+    jne .error_rank
+    cmp rbx, 0
+    jne .error_rank
+    xor rax, rax
+    jmp .done
+
+.error_rank:
+    mov rdx, rbx
+    inc rdx
+    mov rax, 1
+    jmp .done
+
+.error:
+    mov rdx, rbx
+    inc rdx
+    mov rax, 1
+
 .done:
     pop rsi
-    pop rdx
     pop rcx
     pop rbx
-    pop rax
     ret
 
 ; ============================================================
@@ -191,6 +275,8 @@ parse_fen_string:
     call fen_next_token
     mov rdi, rax
     call parse_fen_board
+    test rax, rax
+    jnz .board_error
     mov r15, rdi              ; uloz poziciu za board token
 
     ; side
@@ -297,9 +383,15 @@ parse_fen_string:
     call compute_hash
     call init_hash_history
     call record_hash
+    mov byte [pl_dirty], 1
 
     xor rax, rax
     jmp .done
+
+.board_error:
+    mov rax, rdx
+    call fen_report_rank_error
+    jmp .error
 
 .error:
     mov rax, 1
