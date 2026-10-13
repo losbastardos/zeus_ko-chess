@@ -6,8 +6,15 @@ perft:
     push r15
     push rbp
     mov rbp, rsp
+    mov r15, rdi            ; depth uloz pred helper volaniami
 
-    mov r15, rdi            ; depth
+%if ENABLE_PL_INFRA = 1
+    cmp qword [undo_sp], 0
+    jne .perft_have_pl
+    call pl_rebuild_from_board
+.perft_have_pl:
+%endif
+
     test r15, r15
     jnz .recurse
     mov rax, 1

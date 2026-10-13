@@ -9,6 +9,10 @@ quiescence:
 
     inc qword [nodes_searched]
     inc qword [prof_qnodes]
+    ; check_time nevolaj na kazdom node: staci periodicky
+    mov rax, [nodes_searched]
+    and rax, 2047
+    jnz .qs_continue
     call check_time
     test eax, eax
     jz .qs_continue
@@ -302,6 +306,22 @@ quiescence:
     ; SEE pruning: zle vymenne tahy (see < 0) preskoc; v sachu (evasions) nie
     cmp qword [rbp - 40], 0
     jne .qs_do_move
+%if ENABLE_SEE_AUDIT = 1
+    push rcx
+    inc qword [see_audit_calls]
+    movzx rax, word [rbp - 544 + rcx*2]
+    mov rdx, [position_hash]
+    rol rdx, 17
+    xor rax, rdx
+    or rax, 1
+    call see_audit_mark_key
+    test eax, eax
+    jz .qs_audit_done
+    inc qword [see_audit_repeats]
+.qs_audit_done:
+    pop rcx
+%endif
+    movzx rax, word [rbp - 544 + rcx*2] ; SEE musi dostat povodny tah v AX
     push rcx
     call see                ; vstup: ax = aktualny tah
     pop rcx

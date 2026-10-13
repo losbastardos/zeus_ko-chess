@@ -8,6 +8,10 @@ negamax:
     mov rbp, rsp
 
     inc qword [nodes_searched]
+    ; check_time nevolaj na kazdom node: staci periodicky
+    mov rax, [nodes_searched]
+    and rax, 2047
+    jnz .neg_continue
     call check_time
     test eax, eax
     jz .neg_continue

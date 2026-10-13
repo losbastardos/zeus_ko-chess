@@ -18,6 +18,7 @@ global parse_user_move, find_move, apply_move
 extern board, side, move_buf, move_list, move_count
 extern promo_pieces, moved_piece, captured_piece
 extern pos_bb_move_delta
+extern pl_dirty
 
 ; ============================================================
 ; parse_user_move - prevedie move_buf[0..3] na from | (to << 6)
@@ -99,6 +100,8 @@ apply_move:
     push r13
     push r14
     push rsi
+
+    mov byte [pl_dirty], 1
 
     movzx rbx, ax
     and rbx, 0x3F

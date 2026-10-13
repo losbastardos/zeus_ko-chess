@@ -87,6 +87,117 @@ check_time:
     pop rbx
     ret
 
+%if ENABLE_SEE_AUDIT = 1
+; ============================================================
+; see_audit_reset - vynuluje debug SEE audit stav
+; ============================================================
+see_audit_reset:
+    lea rdi, [see_audit_table]
+    mov ecx, 16384
+    xor eax, eax
+    rep stosq
+    mov qword [see_audit_calls], 0
+    mov qword [see_audit_repeats], 0
+    ret
+
+; ============================================================
+; see_audit_mark_key - vloz key do setu
+; Vstup: rax = key (musi byt != 0)
+; Vystup: eax = 1 ak key uz existoval, inak 0
+; ============================================================
+see_audit_mark_key:
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+
+    mov rdx, rax
+    lea rsi, [see_audit_table]
+    mov ebx, 16383
+    and rbx, rdx
+    mov ecx, 16384
+.probe:
+    mov rdi, [rsi + rbx*8]
+    test rdi, rdi
+    jz .insert
+    cmp rdi, rdx
+    je .hit
+    inc rbx
+    and ebx, 16383
+    dec ecx
+    jnz .probe
+
+    xor eax, eax
+    jmp .done
+
+.insert:
+    mov [rsi + rbx*8], rdx
+    xor eax, eax
+    jmp .done
+
+.hit:
+    mov eax, 1
+
+.done:
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
+; ============================================================
+; see_audit_emit - vypis debug metriky SEE auditu
+; ============================================================
+see_audit_emit:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+
+    lea rdi, [see_audit_prefix]
+    call write_cstr
+    mov rax, [see_audit_calls]
+    call print_number
+
+    lea rdi, [see_audit_repeats_txt]
+    call write_cstr
+    mov rax, [see_audit_repeats]
+    call print_number
+
+    lea rdi, [see_audit_qnodes_txt]
+    call write_cstr
+    mov rax, [prof_qnodes]
+    call print_number
+
+    lea rdi, [see_audit_ratio_txt]
+    call write_cstr
+    mov rax, [see_audit_calls]
+    imul rax, 1000
+    xor rdx, rdx
+    mov rcx, [prof_qnodes]
+    test rcx, rcx
+    jz .ratio_zero
+    div rcx
+    jmp .ratio_out
+.ratio_zero:
+    xor rax, rax
+.ratio_out:
+    call print_number
+    call trace_nl
+
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
+%endif
+
 ; ============================================================
 ; trace_print_signed - vypise signed cislo
 ; Vstup: rax = hodnota

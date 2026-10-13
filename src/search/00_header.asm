@@ -57,6 +57,22 @@ DEFAULT REL
 %ifndef ENABLE_CORR_HISTORY
 %define ENABLE_CORR_HISTORY 1
 %endif
+%ifndef ENABLE_SEE_AUDIT
+%define ENABLE_SEE_AUDIT 0
+%endif
+%ifndef ENABLE_PL_INFRA
+%define ENABLE_PL_INFRA 0
+%endif
+%ifndef ENABLE_PL_INVARIANT
+%define ENABLE_PL_INVARIANT 0
+%endif
+
+UNDO_ENTRY_SIZE      equ 256
+UNDO_BASE_SIZE       equ 16
+UNDO_PL_SNAPSHOT_OFF equ 16
+PL_STATE_SIZE        equ 240
+PL_LISTS_SIZE        equ 192     ; 12 * 16
+PL_COUNTS_SIZE       equ 12      ; 12 * 1
 
 ; Search pruning konstanty (E9)
 RAZOR_MARGIN    equ 250         ; razoring: eval + margin < alpha pri depth 1
@@ -92,11 +108,26 @@ trace_w_flag_exact:  db "exact", 0
 trace_w_flag_fl:     db "fail-low", 0
 trace_w_flag_fh:     db "fail-high", 0
 
+%if ENABLE_SEE_AUDIT = 1
+see_audit_prefix:        db "info string see_audit calls=", 0
+see_audit_repeats_txt:   db " repeats=", 0
+see_audit_qnodes_txt:    db " qnodes=", 0
+see_audit_ratio_txt:     db " calls_per_qnode_x1000=", 0
+%endif
+
 section .bss
 
-undo_stack:     resb 64*16      ; miesto pre 64 undo zaznamov
+undo_stack:     resb 64*UNDO_ENTRY_SIZE ; miesto pre 64 undo zaznamov
 undo_sp:        resq 1          ; offset (v bajtoch) do undo_stack
 nnue_delta_applied: resb 1      ; E10/F2: nnue2_move_delta(_inv) vratil 1
+pl_dirty:       resb 1          ; 1 = piece-list stav treba rebuildnut z board
+pl_lists:       resb PL_LISTS_SIZE ; [12][16] zoznamy stvorcov pre figury
+pl_counts:      resb PL_COUNTS_SIZE ; [12] pocty prvkov v zoznamoch
+pl_pad:         resb (PL_STATE_SIZE - PL_LISTS_SIZE - PL_COUNTS_SIZE)
+pl_verify_lists:  resb PL_LISTS_SIZE
+pl_verify_counts: resb PL_COUNTS_SIZE
+pl_verify_pad:    resb (PL_STATE_SIZE - PL_LISTS_SIZE - PL_COUNTS_SIZE)
+pl_dbg_stage:     resb 1
 search_timespec: resq 2
 search_ply:     resq 1          ; vzdialenost od rootu (pre mat skore + kille)
 killers:        resd 2*64       ; dva killer tahy na kazdy ply
@@ -148,9 +179,17 @@ prof_makes:     resq 1          ; volania make_move
 prof_unmakes:   resq 1          ; volania unmake_move
 prof_allprune:  resq 1          ; all-prune fallbacky v negamax
 
+%if ENABLE_SEE_AUDIT = 1
+see_audit_calls:    resq 1
+see_audit_repeats:  resq 1
+see_audit_table:    resq 16384   ; open-addressing set klucov (move,position)
+%endif
+
 section .text
 
 global make_move, unmake_move, quiescence, negamax, search_best_move, perft
+global pl_rebuild_from_board
+global pl_dirty
 global asp_alpha, asp_beta, asp_delta, asp_use, asp_retry
 global root_trace_count, root_trace_moves, root_trace_scores
 global root_diag_count, root_diag_moves, root_diag_scores, root_diag_alpha, root_diag_beta

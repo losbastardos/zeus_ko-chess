@@ -52,6 +52,7 @@ extern moved_piece, captured_piece
 extern piece_chars, initial_board
 extern compute_hash
 extern pos_bb_init
+extern pl_dirty
 extern msg_files, msg_files_len, msg_files_rev, msg_files_rev_len, msg_newline
 extern rank_char_buf, square_char_buf
 extern print_newline, print_panel_line
@@ -128,6 +129,7 @@ init_board:
     mov byte [halfmove], 0
     mov word [fullmove], 1
     mov byte [board_flip], 0
+    mov byte [pl_dirty], 1
     call pos_bb_init               ; E10/F1: bb stav konzistentny s board
     call compute_hash
     ret

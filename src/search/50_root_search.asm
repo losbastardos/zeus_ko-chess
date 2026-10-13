@@ -13,6 +13,12 @@ search_best_move:
     jne .sbm_single
 
 .sbm_single:
+    mov rbx, rdi            ; odloz hlbku searchu pred volaniami
+
+%if ENABLE_PL_INFRA = 1
+    ; piece-list stav pre search cesty synchronizuj raz na root pozicii
+    call pl_rebuild_from_board
+%endif
 
     mov qword [nodes_searched], 0
     mov qword [prof_qnodes], 0
@@ -21,10 +27,12 @@ search_best_move:
     mov qword [prof_makes], 0
     mov qword [prof_unmakes], 0
     mov qword [prof_allprune], 0
+%if ENABLE_SEE_AUDIT = 1
+    call see_audit_reset
+%endif
     mov dword [search_last_score], 0
     mov qword [search_ply], 0
     mov qword [root_pv_len], 0   ; root PV zacina prazdna
-    mov rbx, rdi            ; odloz hlbku searchu (generate_all_moves prepise r12-r15)
 
     ; vynuluj killer tabulku; history/cap_history/countermoves/continuation/corr
     ; len pri prvej ID iteracii
@@ -95,6 +103,11 @@ search_best_move:
     mov [root_alpha], eax
 
 .move_loop:
+    ; na roote kontrolujeme stop/time vzdy (pocet root tahov je maly)
+    call check_time
+    test eax, eax
+    jnz .loop_done
+
     cmp byte [uci_stop_flag], 0
     jne .loop_done
 
@@ -595,6 +608,9 @@ search_best_move:
     xor eax, eax
 
 .sbm_exit:
+%if ENABLE_SEE_AUDIT = 1
+    call see_audit_emit
+%endif
     mov rsp, rbp
     pop r15
     pop r14
