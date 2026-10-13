@@ -1157,9 +1157,21 @@ suite_process_line:
     ; search
     call uci_now_ms
     mov r14, rax
-    movzx rdi, byte [suite_depth]
+
+    ; suite ma emulovat UCI go depth: iterative deepening 1..N
+    ; (jednorazove volanie iba na finalnej hlbke meni ordering/historie)
+    movzx r12d, byte [suite_depth]
+    mov ebx, 1
+.suite_id_loop:
+    cmp ebx, r12d
+    jg .suite_id_done
+    mov edi, ebx
     call search_best_move
     mov r15, rax
+    inc ebx
+    jmp .suite_id_loop
+.suite_id_done:
+
     call uci_now_ms
     sub rax, r14
     add [suite_time_total], rax
