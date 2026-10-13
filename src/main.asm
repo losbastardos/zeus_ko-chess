@@ -269,7 +269,7 @@ extern move_buf, move_buf_len, move_count, side, board_flip, perft_depth, halfmo
 extern gfx_active_backend
 extern lang_is_en
 extern uci_own_book, uci_stop_flag, uci_ponder, uci_hash_size, uci_move_overhead, uci_syzygy_probe_depth, uci_threads
-extern tt_init, pst_init, book_pick_move, nnue_load, nnue2_load
+extern tt_init, pst_init, book_pick_move, nnue_load, nnue2_load, nnue2_refresh, nnue2_ready
 extern parse_fen_string, uci_now_ms
 extern nodes_searched
 extern suite_cmd_text, suite_snapshot_save, suite_snapshot_restore
@@ -1090,6 +1090,15 @@ _start:
     jz .eval_done
     mov byte [eval_mode], 0    ; fallback classic pri chybe siete
 .eval_done:
+    ; Pri eval_mode=2 po uspesnom loade siete zosynchronizuj akumulator
+    ; na aktualnu inicializovanu poziciu, aby UCI diagnostika nezacinala
+    ; v stave acc_valid=0.
+    cmp byte [eval_mode], 2
+    jne .eval_refresh_done
+    cmp byte [nnue2_ready], 1
+    jne .eval_refresh_done
+    call nnue2_refresh
+.eval_refresh_done:
 
     ; pocet threadov (P2 scaffold pre Lazy SMP): clamp 1..8
     lea rdi, [key_threads]
