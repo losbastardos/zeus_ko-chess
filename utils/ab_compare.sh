@@ -14,7 +14,7 @@ fi
 
 BF_DEPTH="${BF_DEPTH:-14}"
 ARASAN_DEPTH="${ARASAN_DEPTH:-6}"
-BF_TIMEOUT_SEC="${BF_TIMEOUT_SEC:-180}"
+BF_TIMEOUT_SEC="${BF_TIMEOUT_SEC:-600}"
 ARASAN_TIMEOUT_SEC="${ARASAN_TIMEOUT_SEC:-900}"
 STRICT="${STRICT:-0}"
 CAND_THREADS="${CAND_THREADS:-1}"
@@ -49,6 +49,7 @@ run_suite() {
     local depth="$3"
     local timeout_sec="$4"
     local threads="$5"
+    local suite_path
     local out_file
     local line
     local hits
@@ -56,8 +57,13 @@ run_suite() {
     local nodes
     local time_ms
 
+    suite_path="$suite_file"
+    if [[ "$suite_path" != /* ]]; then
+        suite_path="$PWD/$suite_path"
+    fi
+
     out_file="$(mktemp)"
-    timeout "${timeout_sec}s" sh -c "printf 'uci\nsetoption name Threads value ${threads}\nisready\nsuite ${suite_file} ${depth}\nquit\n' | '$engine' --uci" >"$out_file" 2>&1 || {
+    timeout "${timeout_sec}s" sh -c "printf 'uci\nsetoption name Threads value ${threads}\nisready\nsuite ${suite_path} ${depth}\nquit\n' | '$engine' --uci" >"$out_file" 2>&1 || {
         echo "ERROR: suite failed: $suite_file ($engine)"
         tail -n 20 "$out_file" || true
         rm -f "$out_file"

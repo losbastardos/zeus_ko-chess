@@ -32,4 +32,15 @@ STRICT="${STRICT:-1}" \
 RUN_TAG="$RUN_TAG" \
 ./utils/ab_compare.sh "$CANDIDATE_PATH" "$BASELINE_PATH"
 
+# Volitelny krok (dlhy, default vypnuty): matchup vs Arasan 26.
+if [[ "${ARASAN_MATCHUP:-0}" == "1" ]]; then
+    echo "[nightly] Step 3/3: matchup vs Arasan (GAMES=${MATCHUP_GAMES:-100}, TC=${MATCHUP_TC:-10+0.1})"
+    ENGINE="$CANDIDATE_PATH" \
+    GAMES="${MATCHUP_GAMES:-100}" TC="${MATCHUP_TC:-10+0.1}" \
+    RUN_TAG="$RUN_TAG" \
+    ./utils/arasan_matchup.sh "${MATCHUP_GAMES:-100}" "${MATCHUP_TC:-10+0.1}"
+else
+    echo "[nightly] Step 3/3: matchup vs Arasan preskoceny (ARASAN_MATCHUP=${ARASAN_MATCHUP:-0})"
+fi
+
 echo "[nightly] PASS"

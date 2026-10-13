@@ -33,12 +33,16 @@ tests/reports/
 # python venv / cache v tuning infra
 tests/tuning/.venv/
 __pycache__/
+*.pyc
+perf*.data
 
 # súkromné / lokálne súbory (nesmú na GitHub)
 docs/
 AGENTS.md
 .vscode/
 SESSION_LOG.md
+SESSION_LOG_ARCHIVE_*.md
+PERF_WORKFLOW.md
 scratch/
 arasan-linux-binaries-26.0/
 
