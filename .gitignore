@@ -29,6 +29,7 @@ tb/BNvK.rtb[wwz]
 
 # výstupy test/tuning pipeline (make *_REPORT=...)
 tests/reports/
+bench*
 
 # python venv / cache v tuning infra
 tests/tuning/.venv/
