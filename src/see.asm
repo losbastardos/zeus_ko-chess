@@ -78,6 +78,20 @@ see:
     jnz .copy_loop
     lea r14, [rbp - 104]    ; r14 = base kopie board
 
+    ; occupancy mask pre kopiu boardu (bit sq je 1 ak sq != EMPTY)
+    xor rax, rax
+    xor ecx, ecx
+.occ_loop:
+    movzx edx, byte [r14 + rcx]
+    test edx, edx
+    jz .occ_next
+    bts rax, rcx
+.occ_next:
+    inc ecx
+    cmp ecx, 64
+    jl .occ_loop
+    mov [rbp - 240], rax
+
     ; ---- gain[0] = hodnota branej figury ----
     mov eax, ebx
     shr eax, 12
@@ -117,6 +131,11 @@ see:
     mov eax, ebx
     and eax, 0x3F
     mov byte [r14 + rax], EMPTY
+    ; occupancy: from vymaz, to nastav
+    mov rdx, [rbp - 240]
+    btr rdx, rax
+    bts rdx, r12
+    mov [rbp - 240], rdx
     ; en passant: odstran aj zajateho pesiaca (za 'to' v smere tahu)
     mov eax, ebx
     shr eax, 12
@@ -132,6 +151,9 @@ see:
     lea rax, [r12 + 8]      ; cierny bral pesiaca na to + 8
 .ep_clear:
     mov byte [r14 + rax], EMPTY
+    mov rdx, [rbp - 240]
+    btr rdx, rax
+    mov [rbp - 240], rdx
 .apply_done:
 
     ; r15 = hodnota figury aktualne na 'to'
@@ -143,6 +165,7 @@ see:
     ; ---- swap loop: najdi utocnika, pripocitaj gain, presun na 'to' ----
     xor ebx, ebx            ; rbx = d (pocet dalsich brani v poradi)
 .swap_loop:
+    mov rax, [rbp - 240]
     mov rsi, r14
     mov edx, r12d
     mov ecx, r13d
@@ -156,6 +179,9 @@ see:
     sub r8d, edx
     mov dword [rcx + rbx*4], r8d        ; gain[d] = val(na to) - gain[d-1]
     ; presun utocnika na 'to' (odkryje pripadny x-ray za nim)
+    mov rdx, [rbp - 240]
+    btr rdx, rax
+    mov [rbp - 240], rdx
     movzx edx, byte [r14 + rax]
     mov byte [r14 + rax], EMPTY
     mov [r14 + r12], dl
@@ -194,48 +220,53 @@ see:
 ; ============================================================
 ; see_find_attacker - najde NAJMENEJ hodnotnu figuru danej strany,
 ;                     ktora utoci na target (na kopii board)
-; Vstup:  rsi = base kopie board[64], edx = target, ecx = side (0/1)
+; Vstup:  rax = occupancy mask kopie boardu,
+;         rsi = base kopie board[64], edx = target, ecx = side (0/1)
 ; Vystup: rax = policko utocnika (0..63), alebo -1
 ; Clobber: rax, rcx, rdx, rdi, r8-r11 (rsi, rbx, r12-r15 zachovane)
 ; ============================================================
 see_find_attacker:
+    push rbx
+    push r15
     mov r10d, edx           ; target
     shl ecx, 3
     mov r11d, ecx           ; farba hladanej strany (0/8)
     mov r8d, -1             ; best sq
     mov r9d, 0x7FFFFFFF     ; best value
-    xor ecx, ecx            ; scan index policka
+    mov rbx, rax            ; set bit = ne-prazdne policko
 .scan:
-    movzx eax, byte [rsi + rcx]
-    test eax, eax
-    jz .next
-    mov edx, eax
+    test rbx, rbx
+    jz .done
+    bsf rcx, rbx
+    lea rax, [rbx - 1]
+    and rbx, rax
+    movzx r15d, byte [rsi + rcx]
+    mov edx, r15d
     and edx, COLOR_MASK
     cmp edx, r11d
-    jne .next
+    jne .scan
     ; utoci figura na rcx target r10?
     mov edi, ecx
     push rcx
     call see_attacks
     pop rcx
     test eax, eax
-    jz .next
-    movzx eax, byte [rsi + rcx]
+    jz .scan
+    mov eax, r15d
     and eax, PIECE_MASK
     lea rdx, [see_values]
     mov edx, dword [rdx + rax*4]
     cmp edx, r9d
-    jge .next
+    jge .scan
     mov r9d, edx
     mov r8d, ecx
     cmp edx, 100            ; pesiak = minimum, lepsie uz niet
     je .done
-.next:
-    inc ecx
-    cmp ecx, 64
-    jl .scan
+    jmp .scan
 .done:
     mov eax, r8d
+    pop r15
+    pop rbx
     ret
 
 ; ============================================================
