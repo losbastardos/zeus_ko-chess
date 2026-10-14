@@ -106,7 +106,7 @@
 
     lea rdi, [trace_w_eval]
     call write_cstr
-    call evaluate
+    call search_eval_checked
     mov r10d, eax
     movzx eax, byte [side]
     cmp eax, WHITE

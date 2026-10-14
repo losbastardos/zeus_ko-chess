@@ -29,7 +29,7 @@ negamax:
     ; prekrocili kapacitu a make_move by prepisal pamat za undo_stack)
     cmp qword [search_ply], 60
     jl .ply_cap_ok
-    call evaluate
+    call search_eval_checked
     movzx ebx, byte [side]
     test ebx, ebx
     jz .ply_cap_done
@@ -318,7 +318,7 @@ negamax:
     mov dword [rbp - 68], EVAL_NONE ; raw eval pred correction history (diera medzi improving a singular_move)
     cmp dword [rbp - 44], 0
     jne .eval_ready                 ; v sachu: ziadny static eval
-    call evaluate
+    call search_eval_checked
     movzx ecx, byte [side]
     test ecx, ecx
     jz .eval_side_ok

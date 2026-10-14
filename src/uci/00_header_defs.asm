@@ -9,6 +9,10 @@
 
 %include "chess.inc"
 
+%ifndef ENABLE_PL_INVARIANT
+%define ENABLE_PL_INVARIANT 0
+%endif
+
 DEFAULT REL
 
 section .data
@@ -147,6 +151,40 @@ uci_info_root_sp:   db " ", 0
 uci_info_allprune:  db "info string all_prune=", 0
 uci_info_eval_white: db "info string static_eval_white=", 0
 uci_info_eval_stm:   db " static_eval_stm=", 0
+uci_info_evaldiff_list: db "info string evaldiff list", 0
+uci_info_evaldiff_scan: db "info string evaldiff scan", 0
+uci_info_evaldiff_first: db "info string evaldiff first_diff=", 0
+uci_info_evaldiff_none: db "none", 0
+uci_info_evaldiff_score: db " score=", 0
+uci_info_evaldiff_mg: db " mg=", 0
+uci_info_evaldiff_eg: db " eg=", 0
+uci_info_evaldiff_phase: db " phase=", 0
+uci_info_evaldiff_wk: db " wk=", 0
+uci_info_evaldiff_bk: db " bk=", 0
+uci_info_evaldiff_tropw: db " trop_w=", 0
+uci_info_evaldiff_tropb: db " trop_b=", 0
+uci_info_evaldiff_listv: db " list=", 0
+uci_info_evaldiff_scanv: db " scan=", 0
+uci_info_evaldiff_name_score: db "score", 0
+uci_info_evaldiff_name_mg: db "mg", 0
+uci_info_evaldiff_name_eg: db "eg", 0
+uci_info_evaldiff_name_phase: db "phase", 0
+uci_info_evaldiff_name_wk: db "wk", 0
+uci_info_evaldiff_name_bk: db "bk", 0
+uci_info_evaldiff_name_tropw: db "trop_w", 0
+uci_info_evaldiff_name_tropb: db "trop_b", 0
+%if ENABLE_PL_INVARIANT = 1
+uci_info_evaldiff_seen_base: db "info string evaldiff seen_base lists=", 0
+uci_info_evaldiff_seen_counts: db "info string evaldiff seen_counts", 0
+uci_info_evaldiff_seen_first: db "info string evaldiff seen_first", 0
+uci_info_evaldiff_direct_counts: db "info string evaldiff direct_counts", 0
+uci_info_evaldiff_direct_first: db "info string evaldiff direct_first", 0
+uci_info_evaldiff_counts_base: db " counts=", 0
+uci_info_evaldiff_idx_prefix: db " i", 0
+uci_info_evaldiff_eq: db "=", 0
+uci_info_evaldiff_slash: db "/", 0
+uci_info_evaldiff_sp: db " ", 0
+%endif
 uci_info_hashtest_ok: db "info string hashtest mismatches=0 plies=", 0
 uci_info_hashtest_bad: db "info string hashtest mismatch phase=", 0
 uci_info_hashtest_ply: db " ply=", 0
@@ -216,6 +254,30 @@ uci_move_source: resb 1   ; 0=search, 1=book
 uci_last_iter_move: resd 1 ; posledny tah vrateny search_best_move v ID smycke
 uci_eval_white_tmp: resd 1
 uci_eval_stm_tmp:   resd 1
+uci_evaldiff_saved_dirty: resb 1
+uci_evaldiff_pad: resb 3
+uci_evaldiff_list_score: resd 1
+uci_evaldiff_scan_score: resd 1
+uci_evaldiff_list_mg: resd 1
+uci_evaldiff_scan_mg: resd 1
+uci_evaldiff_list_eg: resd 1
+uci_evaldiff_scan_eg: resd 1
+uci_evaldiff_list_phase: resd 1
+uci_evaldiff_scan_phase: resd 1
+uci_evaldiff_list_wk: resd 1
+uci_evaldiff_scan_wk: resd 1
+uci_evaldiff_list_bk: resd 1
+uci_evaldiff_scan_bk: resd 1
+uci_evaldiff_list_tropw: resd 1
+uci_evaldiff_scan_tropw: resd 1
+uci_evaldiff_list_tropb: resd 1
+uci_evaldiff_scan_tropb: resd 1
+%if ENABLE_PL_INVARIANT = 1
+uci_evaldiff_lists_base_lo: resd 1
+uci_evaldiff_lists_base_hi: resd 1
+uci_evaldiff_counts_base_lo: resd 1
+uci_evaldiff_counts_base_hi: resd 1
+%endif
 uci_hashtest_plies:      resd 1
 uci_hashtest_phase:      resd 1
 uci_hashtest_flag:       resd 1
@@ -253,6 +315,8 @@ extern board, side, move_buf, move_buf_len, move_list, move_count, search_depth
 extern castle, enpassant, halfmove, fullmove
 extern position_hash, square_str_buf
 extern evaluate
+extern eval_dbg_mg, eval_dbg_eg, eval_dbg_phase, eval_dbg_wk, eval_dbg_bk, eval_dbg_trop_w, eval_dbg_trop_b
+extern eval_dbg_lp_lists_base, eval_dbg_lp_counts_base, eval_dbg_lp_counts, eval_dbg_lp_first
 extern eval_mode
 extern nnue_load
 extern nnue2_load
@@ -274,6 +338,7 @@ extern root_diag_flag, root_diag_nodes, root_diag_pv0
 extern trace_white_enable
 extern prof_allprune
 extern make_move, unmake_move, tt_probe
+extern pl_rebuild_from_board, pl_dirty, pl_lists, pl_counts
 extern captured_piece
 extern filter_legal_moves
 extern pv_moves, pv_moves_len

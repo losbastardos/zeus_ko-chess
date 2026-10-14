@@ -11,14 +11,28 @@
 %include "eval_tune.inc"
 %include "pst_tune.inc"
 
+%ifndef ENABLE_PL_INFRA
+%define ENABLE_PL_INFRA 1
+%endif
+
 DEFAULT REL
 
 section .data
 
-global evaluate, eval_dbg_mg, eval_dbg_eg
+global evaluate, eval_dbg_mg, eval_dbg_eg, eval_dbg_phase, eval_dbg_wk, eval_dbg_bk, eval_dbg_trop_w, eval_dbg_trop_b
+global eval_dbg_lp_lists_base, eval_dbg_lp_counts_base, eval_dbg_lp_counts, eval_dbg_lp_first
 global material_mg, material_eg, phase_weights
 eval_dbg_mg: dd 0
 eval_dbg_eg: dd 0
+eval_dbg_phase: dd 0
+eval_dbg_wk: dd 0
+eval_dbg_bk: dd 0
+eval_dbg_trop_w: dd 0
+eval_dbg_trop_b: dd 0
+eval_dbg_lp_lists_base: dq 0
+eval_dbg_lp_counts_base: dq 0
+eval_dbg_lp_counts: times 12 db 0
+eval_dbg_lp_first: times 12 db 255
 
 ; ============================================================
 ; Passed pesiak masky — vystup pawn structure sekcie evaluate
@@ -145,6 +159,7 @@ extern moved_piece, captured_piece, promo_pieces
 extern bb_pieces, bb_side, bb_occ
 extern bb_knight_attacks
 extern bb_attacks_bishop, bb_attacks_rook, bb_attacks_queen
+extern pl_lists, pl_counts, pl_dirty
 
 ; ============================================================
 ; MOB_BLOCK slot_off, typ, atk, outpost - mobilita jedneho typu figury
@@ -501,17 +516,76 @@ evaluate:
 
 .scan_start:
     xor r15d, r15d          ; MG akumulator
+%if ENABLE_PL_INFRA = 1
+    cmp byte [pl_dirty], 0
+    jne .scan_board
+    lea rax, [pl_lists]
+    mov [eval_dbg_lp_lists_base], rax
+    lea rax, [pl_counts]
+    mov [eval_dbg_lp_counts_base], rax
+    xor r10d, r10d          ; piece index 0..11
+
+.scan_piece_kind:
+    cmp r10d, 12
+    jge .scan_done
+    movzx r11d, byte [pl_counts + r10]
+    mov byte [eval_dbg_lp_counts + r10], r11b
+    mov byte [eval_dbg_lp_first + r10], 255
+    test r11d, r11d
+    jz .scan_next_kind
+    mov dword [rbp - 104], r11d
+    mov r8, r10
+    shl r8, 4
+    lea rax, [pl_lists]
+    add r8, rax
+    mov [rbp - 120], r8
+    mov dword [rbp - 80], 0 ; index v zozname
+
+.scan_piece_entry:
+    mov eax, dword [rbp - 80]
+    cmp eax, dword [rbp - 104]
+    jge .scan_next_kind
+    mov r8, [rbp - 120]
+    movzx r12d, byte [r8 + rax]
+    test eax, eax
+    jne .scan_after_first_dbg
+    mov byte [eval_dbg_lp_first + r10], r12b
+.scan_after_first_dbg:
+    mov r14d, r10d
+    cmp r14d, 6
+    jb .scan_piece_white
+    sub r14d, 6
+    mov r13d, BLACK
+    jmp .scan_piece_type
+.scan_piece_white:
+    xor r13d, r13d
+.scan_piece_type:
+    inc r14d
+    jmp .piece_eval
+
+.scan_piece_continue:
+    inc dword [rbp - 80]
+    jmp .scan_piece_entry
+
+.scan_next_kind:
+    inc r10d
+    jmp .scan_piece_kind
+
+.scan_board:
+%endif
     xor r12, r12            ; index policka
 
 .next_square:
     lea rsi, [board]
     movzx r13d, byte [rsi + r12]
     test r13d, r13d
-    jz .skip
+    jz .skip_board
 
     mov r14d, r13d
     and r14d, PIECE_MASK    ; typ figury
     and r13d, COLOR_MASK    ; farba (0 alebo BLACK=8)
+
+.piece_eval:
 
     ; --- MG/EG hodnota ---
     ; phase-1 own/enemy PST lookup ma zmysel len pre eval_mode 1 (trenovane
@@ -604,23 +678,31 @@ evaluate:
     ; zber dat pre bishop pair (pawn masky/file counts sa beru priamo
     ; z bitboardov po skene — pozri .pawn_from_bb)
     cmp r14d, PAWN
-    je .skip
+    je .piece_eval_done
     cmp r14d, BISHOP
-    jne .skip
+    jne .piece_eval_done
 .col_bishop:
     cmp r14d, BISHOP
-    jne .skip
+    jne .piece_eval_done
     test r13d, r13d
     jnz .col_black_bishop
     inc dword [rbp - 36]
-    jmp .skip
+    jmp .piece_eval_done
 .col_black_bishop:
     inc dword [rbp - 40]
 
-.skip:
+.piece_eval_done:
+%if ENABLE_PL_INFRA = 1
+    cmp byte [pl_dirty], 0
+    je .scan_piece_continue
+%endif
+
+.skip_board:
     inc r12
     cmp r12, 64
     jl .next_square
+
+.scan_done:
 
     ; ---- pawn masky + file counts priamo z bitboardov ----
     ; (bitboard stav je primarny a po kazdom make/unmake synchronizovany)
@@ -863,20 +945,73 @@ evaluate:
     ; ================= KING TROPISM (MG only) =================
     ; Pre kazdu nePesiacku nKralovsku figuru: Chebyshev <= 2 od nepriatelovho krala
     ; biela figura -> utok na cierneho krala ([rbp-68]); cierna -> na bieleho ([rbp-64])
+%if ENABLE_PL_INFRA = 1
+    cmp byte [pl_dirty], 0
+    jne .trop_board
+    xor r10d, r10d          ; piece index 0..11
+
+.trop_kind_loop:
+    cmp r10d, 12
+    jge .trop_done
+    mov r14d, r10d
+    cmp r14d, 6
+    jb .trop_kind_white
+    sub r14d, 6
+    mov r13d, BLACK
+    jmp .trop_kind_type
+.trop_kind_white:
+    xor r13d, r13d
+.trop_kind_type:
+    inc r14d
+    cmp r14d, PAWN
+    je .trop_kind_next
+    cmp r14d, KING
+    je .trop_kind_next
+    movzx r11d, byte [pl_counts + r10]
+    test r11d, r11d
+    jz .trop_kind_next
+    mov dword [rbp - 104], r11d
+    mov r8, r10
+    shl r8, 4
+    lea rax, [pl_lists]
+    add r8, rax
+    mov [rbp - 120], r8
+    mov dword [rbp - 80], 0
+
+.trop_entry_loop:
+    mov eax, dword [rbp - 80]
+    cmp eax, dword [rbp - 104]
+    jge .trop_kind_next
+    mov r8, [rbp - 120]
+    movzx r12d, byte [r8 + rax]
+    jmp .trop_piece
+
+.trop_piece_next:
+    inc dword [rbp - 80]
+    jmp .trop_entry_loop
+
+.trop_kind_next:
+    inc r10d
+    jmp .trop_kind_loop
+
+.trop_board:
+%endif
     lea rsi, [board]
     xor r12, r12
 .trop_loop:
     movzx eax, byte [rsi + r12]
     test eax, eax
-    jz .trop_next
+    jz .trop_next_board
     mov r13d, eax
     and r13d, COLOR_MASK
     mov r14d, eax
     and r14d, PIECE_MASK
     cmp r14d, PAWN
-    je .trop_next
+    je .trop_next_board
     cmp r14d, KING
-    je .trop_next
+    je .trop_next_board
+
+.trop_piece:
     ; vybrat cieloveho krala
     test r13d, r13d
     jnz .trop_is_black
@@ -911,19 +1046,28 @@ evaluate:
     mov ecx, r8d
 .trop_cheb:
     cmp ecx, 2
-    jg .trop_next
+    jg .trop_piece_done
     lea rdi, [tropism_weights]
-    movzx r10d, byte [rdi + r14]
+    movzx eax, byte [rdi + r14]
     test r13d, r13d
     jnz .trop_acc_black
-    add dword [rbp - 72], r10d  ; biely utoci na cierneho krala
-    jmp .trop_next
+    add dword [rbp - 72], eax   ; biely utoci na cierneho krala
+    jmp .trop_piece_done
 .trop_acc_black:
-    add dword [rbp - 76], r10d  ; cierny utoci na bieleho krala
-.trop_next:
+    add dword [rbp - 76], eax   ; cierny utoci na bieleho krala
+
+.trop_piece_done:
+%if ENABLE_PL_INFRA = 1
+    cmp byte [pl_dirty], 0
+    je .trop_piece_next
+%endif
+
+.trop_next_board:
     inc r12
     cmp r12, 64
     jl .trop_loop
+
+.trop_done:
 
     ; aplikovat: cap na 16, * TROPISM_SCALE, len v MG
     mov eax, [rbp - 72]
@@ -946,6 +1090,16 @@ evaluate:
     mov [eval_dbg_mg], r15d
     mov eax, [rbp - 48]
     mov [eval_dbg_eg], eax
+    mov eax, [rbp - 56]
+    mov [eval_dbg_phase], eax
+    mov eax, [rbp - 64]
+    mov [eval_dbg_wk], eax
+    mov eax, [rbp - 68]
+    mov [eval_dbg_bk], eax
+    mov eax, [rbp - 72]
+    mov [eval_dbg_trop_w], eax
+    mov eax, [rbp - 76]
+    mov [eval_dbg_trop_b], eax
 
     ; --- tapered interpolacia: skore = (mg*phase + eg*(24-phase)) / 24 ---
     mov eax, [rbp - 48]         ; eg

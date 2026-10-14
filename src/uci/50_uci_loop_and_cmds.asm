@@ -178,6 +178,14 @@ uci_loop:
     test rax, rax
     jnz .evalstate
 
+    ; 'evaldiff' (non-standard helper: static diferencial list-path vs scan-path)
+    mov rdi, r12
+    mov rsi, rbx
+    lea rdx, [rel .str_evaldiff]
+    call uci_str_eq
+    test rax, rax
+    jnz .evaldiff
+
     ; 'rootdiag' (non-standard helper: zapne detailny root log)
     mov rdi, r12
     mov rsi, rbx
@@ -324,6 +332,413 @@ uci_loop:
     call uci_print_signed_number
 
 .evalstate_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+    jmp .loop
+
+.evaldiff:
+    ; uloz a priprav list-path stav z aktualnej sachovnice
+    mov al, [pl_dirty]
+    mov [uci_evaldiff_saved_dirty], al
+    call pl_rebuild_from_board
+    mov byte [pl_dirty], 0
+
+    ; list-path evaluate
+    call evaluate
+    mov [uci_evaldiff_list_score], eax
+    mov eax, [eval_dbg_mg]
+    mov [uci_evaldiff_list_mg], eax
+    mov eax, [eval_dbg_eg]
+    mov [uci_evaldiff_list_eg], eax
+    mov eax, [eval_dbg_phase]
+    mov [uci_evaldiff_list_phase], eax
+    mov eax, [eval_dbg_wk]
+    mov [uci_evaldiff_list_wk], eax
+    mov eax, [eval_dbg_bk]
+    mov [uci_evaldiff_list_bk], eax
+    mov eax, [eval_dbg_trop_w]
+    mov [uci_evaldiff_list_tropw], eax
+    mov eax, [eval_dbg_trop_b]
+    mov [uci_evaldiff_list_tropb], eax
+
+    ; scan-path evaluate
+    mov byte [pl_dirty], 1
+    call evaluate
+    mov [uci_evaldiff_scan_score], eax
+    mov eax, [eval_dbg_mg]
+    mov [uci_evaldiff_scan_mg], eax
+    mov eax, [eval_dbg_eg]
+    mov [uci_evaldiff_scan_eg], eax
+    mov eax, [eval_dbg_phase]
+    mov [uci_evaldiff_scan_phase], eax
+    mov eax, [eval_dbg_wk]
+    mov [uci_evaldiff_scan_wk], eax
+    mov eax, [eval_dbg_bk]
+    mov [uci_evaldiff_scan_bk], eax
+    mov eax, [eval_dbg_trop_w]
+    mov [uci_evaldiff_scan_tropw], eax
+    mov eax, [eval_dbg_trop_b]
+    mov [uci_evaldiff_scan_tropb], eax
+
+    ; obnov povodny dirty flag
+    mov al, [uci_evaldiff_saved_dirty]
+    mov [pl_dirty], al
+
+%if ENABLE_PL_INVARIANT = 1
+    ; snapshot adries, ktore videla list-path slucka v evaluate
+    mov rax, [eval_dbg_lp_lists_base]
+    mov [uci_evaldiff_lists_base_lo], eax
+    shr rax, 32
+    mov [uci_evaldiff_lists_base_hi], eax
+    mov rax, [eval_dbg_lp_counts_base]
+    mov [uci_evaldiff_counts_base_lo], eax
+    shr rax, 32
+    mov [uci_evaldiff_counts_base_hi], eax
+
+    ; vypis list komponenty
+    lea rdi, [uci_info_evaldiff_list]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_score]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_score]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_mg]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_mg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_eg]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_eg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_phase]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_phase]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_wk]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_wk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_bk]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_bk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_tropw]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_tropw]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_tropb]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_tropb]
+    call uci_print_signed_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+%endif
+
+%if ENABLE_PL_INVARIANT = 1
+    ; what list-path actually saw: base adresy
+    lea rdi, [uci_info_evaldiff_seen_base]
+    call write_cstr
+    mov eax, [uci_evaldiff_lists_base_hi]
+    call print_number
+    lea rdi, [uci_info_evaldiff_slash]
+    call write_cstr
+    mov eax, [uci_evaldiff_lists_base_lo]
+    call print_number
+    lea rdi, [uci_info_evaldiff_counts_base]
+    call write_cstr
+    mov eax, [uci_evaldiff_counts_base_hi]
+    call print_number
+    lea rdi, [uci_info_evaldiff_slash]
+    call write_cstr
+    mov eax, [uci_evaldiff_counts_base_lo]
+    call print_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; what list-path saw: county
+    lea rdi, [uci_info_evaldiff_seen_counts]
+    call write_cstr
+    xor ecx, ecx
+.evaldiff_seen_counts_loop:
+    cmp ecx, 12
+    jge .evaldiff_seen_counts_done
+    lea rdi, [uci_info_evaldiff_idx_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [uci_info_evaldiff_eq]
+    call write_cstr
+    movzx eax, byte [eval_dbg_lp_counts + rcx]
+    call print_number
+    lea rdi, [uci_info_evaldiff_sp]
+    call write_cstr
+    inc ecx
+    jmp .evaldiff_seen_counts_loop
+.evaldiff_seen_counts_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; what list-path saw: first square
+    lea rdi, [uci_info_evaldiff_seen_first]
+    call write_cstr
+    xor ecx, ecx
+.evaldiff_seen_first_loop:
+    cmp ecx, 12
+    jge .evaldiff_seen_first_done
+    lea rdi, [uci_info_evaldiff_idx_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [uci_info_evaldiff_eq]
+    call write_cstr
+    movzx eax, byte [eval_dbg_lp_first + rcx]
+    call print_number
+    lea rdi, [uci_info_evaldiff_sp]
+    call write_cstr
+    inc ecx
+    jmp .evaldiff_seen_first_loop
+.evaldiff_seen_first_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; direct pl_counts/pl_lists view (checker-side)
+    lea rdi, [uci_info_evaldiff_direct_counts]
+    call write_cstr
+    xor ecx, ecx
+.evaldiff_direct_counts_loop:
+    cmp ecx, 12
+    jge .evaldiff_direct_counts_done
+    lea rdi, [uci_info_evaldiff_idx_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [uci_info_evaldiff_eq]
+    call write_cstr
+    movzx eax, byte [pl_counts + rcx]
+    call print_number
+    lea rdi, [uci_info_evaldiff_sp]
+    call write_cstr
+    inc ecx
+    jmp .evaldiff_direct_counts_loop
+.evaldiff_direct_counts_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+    lea rdi, [uci_info_evaldiff_direct_first]
+    call write_cstr
+    xor ecx, ecx
+.evaldiff_direct_first_loop:
+    cmp ecx, 12
+    jge .evaldiff_direct_first_done
+    lea rdi, [uci_info_evaldiff_idx_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [uci_info_evaldiff_eq]
+    call write_cstr
+    mov r8d, ecx
+    shl r8d, 4
+    movzx eax, byte [pl_lists + r8]
+    call print_number
+    lea rdi, [uci_info_evaldiff_sp]
+    call write_cstr
+    inc ecx
+    jmp .evaldiff_direct_first_loop
+.evaldiff_direct_first_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+%endif
+
+    ; vypis scan komponenty
+    lea rdi, [uci_info_evaldiff_scan]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_score]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_score]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_mg]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_mg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_eg]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_eg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_phase]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_phase]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_wk]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_wk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_bk]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_bk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_tropw]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_tropw]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_tropb]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_tropb]
+    call uci_print_signed_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; prvy odlisny komponent
+    lea rdi, [uci_info_evaldiff_first]
+    call write_cstr
+
+    mov eax, [uci_evaldiff_list_score]
+    cmp eax, [uci_evaldiff_scan_score]
+    jne .evaldiff_first_score
+    mov eax, [uci_evaldiff_list_mg]
+    cmp eax, [uci_evaldiff_scan_mg]
+    jne .evaldiff_first_mg
+    mov eax, [uci_evaldiff_list_eg]
+    cmp eax, [uci_evaldiff_scan_eg]
+    jne .evaldiff_first_eg
+    mov eax, [uci_evaldiff_list_phase]
+    cmp eax, [uci_evaldiff_scan_phase]
+    jne .evaldiff_first_phase
+    mov eax, [uci_evaldiff_list_wk]
+    cmp eax, [uci_evaldiff_scan_wk]
+    jne .evaldiff_first_wk
+    mov eax, [uci_evaldiff_list_bk]
+    cmp eax, [uci_evaldiff_scan_bk]
+    jne .evaldiff_first_bk
+    mov eax, [uci_evaldiff_list_tropw]
+    cmp eax, [uci_evaldiff_scan_tropw]
+    jne .evaldiff_first_tropw
+    mov eax, [uci_evaldiff_list_tropb]
+    cmp eax, [uci_evaldiff_scan_tropb]
+    jne .evaldiff_first_tropb
+    lea rdi, [uci_info_evaldiff_none]
+    call write_cstr
+    jmp .evaldiff_first_emit_nl
+
+.evaldiff_first_score:
+    lea rdi, [uci_info_evaldiff_name_score]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_score]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_score]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_mg:
+    lea rdi, [uci_info_evaldiff_name_mg]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_mg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_mg]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_eg:
+    lea rdi, [uci_info_evaldiff_name_eg]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_eg]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_eg]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_phase:
+    lea rdi, [uci_info_evaldiff_name_phase]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_phase]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_phase]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_wk:
+    lea rdi, [uci_info_evaldiff_name_wk]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_wk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_wk]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_bk:
+    lea rdi, [uci_info_evaldiff_name_bk]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_bk]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_bk]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_tropw:
+    lea rdi, [uci_info_evaldiff_name_tropw]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_tropw]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_tropw]
+    call uci_print_signed_number
+    jmp .evaldiff_first_emit_nl
+.evaldiff_first_tropb:
+    lea rdi, [uci_info_evaldiff_name_tropb]
+    call write_cstr
+    lea rdi, [uci_info_evaldiff_listv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_list_tropb]
+    call uci_print_signed_number
+    lea rdi, [uci_info_evaldiff_scanv]
+    call write_cstr
+    movsxd rax, dword [uci_evaldiff_scan_tropb]
+    call uci_print_signed_number
+
+.evaldiff_first_emit_nl:
     mov rax, SYS_WRITE
     mov rdi, STDOUT
     mov rsi, msg_newline
@@ -1123,6 +1538,7 @@ uci_loop:
 .str_bbtest:  db "bbtest", 0
 .str_list:    db "list", 0
 .str_eval:    db "eval", 0
+.str_evaldiff: db "evaldiff", 0
 .str_evalstate: db "evalstate", 0
 .str_hashtest: db "hashtest", 0
 .str_nnuewalk: db "nnuewalk", 0

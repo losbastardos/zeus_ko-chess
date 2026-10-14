@@ -61,7 +61,7 @@ DEFAULT REL
 %define ENABLE_SEE_AUDIT 0
 %endif
 %ifndef ENABLE_PL_INFRA
-%define ENABLE_PL_INFRA 0
+%define ENABLE_PL_INFRA 1
 %endif
 %ifndef ENABLE_PL_INVARIANT
 %define ENABLE_PL_INVARIANT 0
@@ -107,6 +107,27 @@ trace_w_returned:    db " returned=", 0
 trace_w_flag_exact:  db "exact", 0
 trace_w_flag_fl:     db "fail-low", 0
 trace_w_flag_fh:     db "fail-high", 0
+
+evalchk_pre_hdr:     db "info string evalchk pre_guard mismatch ply=", 0
+evalchk_post_hdr:    db "info string evalchk post_eval mismatch ply=", 0
+evalchk_list:        db " list=", 0
+evalchk_scan:        db " scan=", 0
+evalchk_fen:         db "info string evalchk fen=", 0
+evalchk_cmp:         db "info string evalchk compare pl_equal=", 0
+evalchk_first_list:  db " first_diff_list=", 0
+evalchk_first_off:   db " first_diff_off=", 0
+evalchk_first_idx:   db " first_diff_idx=", 0
+evalchk_first_cur:   db " cur=", 0
+evalchk_first_reb:   db " reb=", 0
+evalchk_counts:      db "info string evalchk counts ", 0
+evalchk_lists:       db "info string evalchk list_head ", 0
+evalchk_l9:          db "info string evalchk list9_count cur/reb=", 0
+evalchk_c_prefix:    db "c", 0
+evalchk_r_prefix:    db "r", 0
+evalchk_i_prefix:    db " i", 0
+evalchk_eq:          db "=", 0
+evalchk_slash:       db "/", 0
+evalchk_space:       db " ", 0
 
 %if ENABLE_SEE_AUDIT = 1
 see_audit_prefix:        db "info string see_audit calls=", 0
@@ -190,6 +211,7 @@ section .text
 global make_move, unmake_move, quiescence, negamax, search_best_move, perft
 global pl_rebuild_from_board
 global pl_dirty
+global pl_lists, pl_counts
 global asp_alpha, asp_beta, asp_delta, asp_use, asp_retry
 global root_trace_count, root_trace_moves, root_trace_scores
 global root_diag_count, root_diag_moves, root_diag_scores, root_diag_alpha, root_diag_beta
@@ -223,6 +245,335 @@ extern singular_excl
 extern smp_check_stop, smp_signal_stop
 extern write_cstr, print_number, msg_newline
 extern uci_emit_fen, uci_print_move_token
+extern uci_print_signed_number
+
+; ============================================================
+; search_eval_checked - dual-check evaluate (list-path vs board-path)
+; Pri mismatch vypise diagnostiku a skonci exit(76).
+; Vystup: eax = evaluate (normalna cesta, z pohladu bieleho)
+; Poznamka: wrapper drzi vlastny frame a zachovava ABI discipline.
+; ============================================================
+search_eval_checked:
+    sub rsp, 64
+
+%if ENABLE_PL_INFRA = 1 && ENABLE_PL_INVARIANT = 1
+    ; PRE-GUARD: pred evaluate over, ze aktualny list stav sedi s rebuildom
+    ; (porovnanie iba aktivnych slotov podla count).
+    cmp byte [pl_dirty], 0
+    jne .evalchk_pre_done
+
+    ; snapshot aktualneho list stavu (current) do verify bloku
+    lea rsi, [pl_lists]
+    lea rdi, [pl_verify_lists]
+    mov ecx, PL_STATE_SIZE/8
+    rep movsq
+
+    ; rebuild expected z board[64]
+    call pl_rebuild_from_board
+
+    ; active-only compare current(snapshot) vs rebuild(expected)
+    mov r11, rsp
+    call .evalchk_compare_active
+    cmp dword [rsp + 8], 1
+    je .evalchk_pre_restore
+
+    mov dword [rsp + 0], -1 ; pre-guard nema list/scan score
+    mov dword [rsp + 4], -1
+    mov dword [rsp + 24], 0 ; phase=0 (pre)
+    jmp .evalchk_dump_abort
+
+.evalchk_pre_restore:
+    ; vrat current list stav zo snapshotu, aby search pokracoval bez zmeny
+    lea rsi, [pl_verify_lists]
+    lea rdi, [pl_lists]
+    mov ecx, PL_STATE_SIZE/8
+    rep movsq
+    mov byte [pl_dirty], 0
+.evalchk_pre_done:
+%endif
+
+    ; Primarny vysledok (normalna evaluate cesta)
+    call evaluate
+    mov dword [rsp + 0], eax
+
+%if ENABLE_PL_INFRA = 1 && ENABLE_PL_INVARIANT = 1
+    ; Porovnavaj len ked by evaluate isla list-path cestou
+    cmp byte [pl_dirty], 0
+    jne .evalchk_done
+
+    ; Druhy beh cez board-path (dočasne pl_dirty=1)
+    mov byte [pl_dirty], 1
+    call evaluate
+    mov dword [rsp + 4], eax
+    mov byte [pl_dirty], 0
+
+    mov eax, dword [rsp + 0]
+    cmp eax, dword [rsp + 4]
+    je .evalchk_done
+
+    ; Snapshot aktualneho PL stavu pred rebuild compare (post-eval)
+    lea rsi, [pl_lists]
+    lea rdi, [pl_verify_lists]
+    mov ecx, PL_STATE_SIZE/8
+    rep movsq
+
+    ; Očakávaný stav z board[64]
+    call pl_rebuild_from_board
+
+    mov r11, rsp
+    call .evalchk_compare_active
+    mov dword [rsp + 24], 1 ; phase=1 (post)
+    jmp .evalchk_dump_abort
+
+.evalchk_compare_active:
+    ; Vstup: pl_verify_* = current snapshot, pl_* = rebuild expected
+    ; Vystup lokalov:
+    ; [rsp+8]=pl_equal, [rsp+12]=first_idx, [rsp+16]=cur, [rsp+20]=reb
+    ; [rsp+28]=first_list, [rsp+32]=first_off
+    ; [rsp+36]=list9_cur_count, [rsp+40]=list9_reb_count
+    mov dword [r11 + 8], 1
+    mov dword [r11 + 12], -1
+    mov dword [r11 + 16], 0
+    mov dword [r11 + 20], 0
+    mov dword [r11 + 28], -1
+    mov dword [r11 + 32], -1
+    movzx eax, byte [pl_verify_counts + 9]
+    mov dword [r11 + 36], eax
+    movzx eax, byte [pl_counts + 9]
+    mov dword [r11 + 40], eax
+
+    xor ecx, ecx                ; list idx 0..11
+.evalchk_ca_list_loop:
+    cmp ecx, 12
+    jge .evalchk_ca_done
+    movzx r14d, byte [pl_verify_counts + rcx] ; cur count (snapshot)
+    movzx r15d, byte [pl_counts + rcx]        ; reb count (board rebuild)
+
+    ; count mismatch => okamzity mismatch
+    cmp r14d, r15d
+    je .evalchk_ca_members
+    mov dword [r11 + 8], 0
+    cmp dword [r11 + 12], -1
+    jne .evalchk_ca_next_list
+    mov dword [r11 + 28], ecx
+    mov dword [r11 + 32], 0
+    mov eax, ecx
+    shl eax, 4
+    mov dword [r11 + 12], eax
+    mov dword [r11 + 16], r14d
+    mov dword [r11 + 20], r15d
+    jmp .evalchk_ca_next_list
+
+.evalchk_ca_members:
+    xor ebx, ebx                ; member idx v rebuild liste
+.evalchk_ca_mem_loop:
+    cmp ebx, r15d
+    jge .evalchk_ca_next_list
+
+    ; sq = rebuild[list][member]
+    mov eax, ecx
+    shl eax, 4
+    add eax, ebx
+    movzx esi, byte [pl_lists + rax]
+
+    ; hladanie sq v snapshot/current liste
+    xor edx, edx
+.evalchk_ca_find_loop:
+    cmp edx, r14d
+    jl .evalchk_ca_find_cmp
+    ; sq sa nenasiel => mismatch
+    mov dword [r11 + 8], 0
+    cmp dword [r11 + 12], -1
+    jne .evalchk_ca_mem_next
+    mov dword [r11 + 28], ecx
+    mov dword [r11 + 32], ebx
+    mov eax, ecx
+    shl eax, 4
+    add eax, ebx
+    mov dword [r11 + 12], eax
+    mov dword [r11 + 16], esi
+    mov dword [r11 + 20], 255
+    jmp .evalchk_ca_mem_next
+.evalchk_ca_find_cmp:
+    mov eax, ecx
+    shl eax, 4
+    add eax, edx
+    movzx edi, byte [pl_verify_lists + rax]
+    cmp edi, esi
+    je .evalchk_ca_found
+    inc edx
+    jmp .evalchk_ca_find_loop
+
+.evalchk_ca_found:
+.evalchk_ca_mem_next:
+    inc ebx
+    jmp .evalchk_ca_mem_loop
+
+.evalchk_ca_next_list:
+    inc ecx
+    jmp .evalchk_ca_list_loop
+
+.evalchk_ca_done:
+    ret
+
+.evalchk_dump_abort:
+    ; Header podla fazy + ply + list/scan
+    cmp dword [rsp + 24], 0
+    jne .evalchk_dump_post
+    lea rdi, [evalchk_pre_hdr]
+    jmp .evalchk_dump_hdr
+.evalchk_dump_post:
+    lea rdi, [evalchk_post_hdr]
+.evalchk_dump_hdr:
+    call write_cstr
+    mov rax, [search_ply]
+    call print_number
+    lea rdi, [evalchk_list]
+    call write_cstr
+    movsxd rax, dword [rsp + 0]
+    call uci_print_signed_number
+    lea rdi, [evalchk_scan]
+    call write_cstr
+    movsxd rax, dword [rsp + 4]
+    call uci_print_signed_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; FEN dump
+    lea rdi, [evalchk_fen]
+    call write_cstr
+    call uci_emit_fen
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; list9 count explicitne (poziadavka)
+    lea rdi, [evalchk_l9]
+    call write_cstr
+    mov eax, dword [rsp + 36]
+    call print_number
+    lea rdi, [evalchk_slash]
+    call write_cstr
+    mov eax, dword [rsp + 40]
+    call print_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; counts dump: c0/r0 c1/r1 ... c11/r11
+    lea rdi, [evalchk_counts]
+    call write_cstr
+    xor ecx, ecx
+.evalchk_counts_loop:
+    cmp ecx, 12
+    jge .evalchk_counts_done
+    lea rdi, [evalchk_i_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [evalchk_eq]
+    call write_cstr
+    lea rdi, [evalchk_c_prefix]
+    call write_cstr
+    movzx eax, byte [pl_verify_counts + rcx]
+    call print_number
+    lea rdi, [evalchk_slash]
+    call write_cstr
+    lea rdi, [evalchk_r_prefix]
+    call write_cstr
+    movzx eax, byte [pl_counts + rcx]
+    call print_number
+    lea rdi, [evalchk_space]
+    call write_cstr
+    inc ecx
+    jmp .evalchk_counts_loop
+.evalchk_counts_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    ; list head dump: prvych 32 bajtov listov, side-by-side c/r
+    lea rdi, [evalchk_lists]
+    call write_cstr
+    xor ecx, ecx
+.evalchk_lists_loop:
+    cmp ecx, 32
+    jge .evalchk_lists_done
+    lea rdi, [evalchk_i_prefix]
+    call write_cstr
+    mov eax, ecx
+    call print_number
+    lea rdi, [evalchk_eq]
+    call write_cstr
+    lea rdi, [evalchk_c_prefix]
+    call write_cstr
+    movzx eax, byte [pl_verify_lists + rcx]
+    call print_number
+    lea rdi, [evalchk_slash]
+    call write_cstr
+    lea rdi, [evalchk_r_prefix]
+    call write_cstr
+    movzx eax, byte [pl_lists + rcx]
+    call print_number
+    lea rdi, [evalchk_space]
+    call write_cstr
+    inc ecx
+    jmp .evalchk_lists_loop
+.evalchk_lists_done:
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    lea rdi, [evalchk_cmp]
+    call write_cstr
+    mov eax, dword [rsp + 8]
+    call print_number
+    lea rdi, [evalchk_first_list]
+    call write_cstr
+    movsxd rax, dword [rsp + 28]
+    call uci_print_signed_number
+    lea rdi, [evalchk_first_off]
+    call write_cstr
+    movsxd rax, dword [rsp + 32]
+    call uci_print_signed_number
+    lea rdi, [evalchk_first_idx]
+    call write_cstr
+    movsxd rax, dword [rsp + 12]
+    call uci_print_signed_number
+    lea rdi, [evalchk_first_cur]
+    call write_cstr
+    mov eax, dword [rsp + 16]
+    call print_number
+    lea rdi, [evalchk_first_reb]
+    call write_cstr
+    mov eax, dword [rsp + 20]
+    call print_number
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rsi, msg_newline
+    mov rdx, 1
+    syscall
+
+    mov rax, SYS_EXIT
+    mov rdi, 76
+    syscall
+%endif
+
+.evalchk_done:
+    mov eax, dword [rsp + 0]
+    add rsp, 64
+    ret
 
 ; ============================================================
 ; check_time - periodicka kontrola timeoutu pre UCI search

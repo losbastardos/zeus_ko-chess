@@ -47,7 +47,7 @@ quiescence:
     ; v qsearch ply nemusi zastavit ani pri q-depth floor)
     cmp qword [search_ply], 60
     jl .qs_ply_ok
-    call evaluate
+    call search_eval_checked
     movzx ebx, byte [side]
     test ebx, ebx
     jz .qs_ply_done
@@ -85,7 +85,7 @@ quiescence:
     jnz .qs_gen             ; v sachu: ziadny stand-pat, hladaj evasions
 
     ; stand-pat evaluacia z pohladu strany na tahu
-    call evaluate
+    call search_eval_checked
     movzx ebx, byte [side]
     test ebx, ebx
     jz .qs_eval_done
