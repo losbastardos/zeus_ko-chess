@@ -162,19 +162,18 @@ quiescence:
     cmp r8, r15
     jge .qs_sel_done
 
-    movzx rax, word [rbp - 544 + r8*2]
+    movzx eax, word [rbp - 544 + r8*2]
     xor edx, edx
 
-    mov r9, rax
-    shr r9, 12
-    and r9, 0xF
+    mov r9d, eax
+    shr r9d, 12
+    and r9d, 0xF
 
     cmp r9, FLAG_ENPASSANT
     je .qs_sel_ep
 
-    cmp r9, FLAG_PROMO_Q
-    jb .qs_sel_cap_test
-    cmp r9, FLAG_PROMO_N
+    lea edi, [r9d - FLAG_PROMO_Q]
+    cmp edi, FLAG_PROMO_N - FLAG_PROMO_Q
     ja .qs_sel_cap_test
     add edx, 80000          ; promocia
 .qs_sel_cap_test:
