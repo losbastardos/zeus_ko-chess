@@ -142,9 +142,6 @@ tt_probe:
     ; store protokolu v tt_store (payload -> mfence -> hash). Otocenie poradia
     ; citania rozbije synchronizaciu a nesmie sa urobit.
     push rbx
-    push r9
-    push r10
-    push r11
 
     mov ebx, edx                    ; uloz alpha
 
@@ -197,9 +194,6 @@ tt_probe:
     xor edx, edx
 
 .done:
-    pop r11
-    pop r10
-    pop r9
     pop rbx
     ret
 
