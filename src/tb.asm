@@ -308,6 +308,7 @@ global tb_nonking
 global tb_enc_type, tb_pieces, tb_norm, tb_factor, tb_tb_size, tb_pawns0, tb_pawns1
 
 extern board, side, halfmove
+extern pl_dirty, pl_counts
 extern generate_all_moves, is_in_check, move_count
 extern filter_legal_moves
 
