@@ -23,6 +23,9 @@ from typing import List
 def build_cmd(args: argparse.Namespace) -> List[str]:
     cmd: List[str] = ["cutechess-cli"]
 
+    new_ownbook = "true" if args.new_ownbook else "false"
+    base_ownbook = "true" if args.base_ownbook else "false"
+
     cmd += [
         "-engine",
         f"name=NEW",
@@ -30,9 +33,9 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
         "proto=uci",
         f"option.Hash={args.hash_mb}",
         f"option.Threads={args.new_threads}",
+        f"option.OwnBook={new_ownbook}",
+        f"option.EvalMode={args.new_eval_mode}",
     ]
-    if args.new_ownbook_option:
-        cmd.append("option.OwnBook=false")
 
     cmd += [
         "-engine",
@@ -41,9 +44,9 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
         "proto=uci",
         f"option.Hash={args.hash_mb}",
         f"option.Threads={args.base_threads}",
+        f"option.OwnBook={base_ownbook}",
+        f"option.EvalMode={args.base_eval_mode}",
     ]
-    if args.base_ownbook_option:
-        cmd.append("option.OwnBook=false")
 
     cmd += ["-each", "proto=uci", f"tc={args.tc}"]
     cmd += ["-concurrency", str(args.concurrency)]
@@ -81,28 +84,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hash-mb", type=int, default=64, help="Hash option for both engines")
     parser.add_argument("--new-threads", type=int, default=1, help="Threads option for NEW engine")
     parser.add_argument("--base-threads", type=int, default=1, help="Threads option for BASE engine")
+    parser.add_argument("--eval-mode", type=int, default=0, help="EvalMode for both engines (default)")
+    parser.add_argument("--new-eval-mode", type=int, default=None, help="EvalMode override for NEW engine")
+    parser.add_argument("--base-eval-mode", type=int, default=None, help="EvalMode override for BASE engine")
+    parser.add_argument(
+        "--ownbook",
+        choices=["true", "false"],
+        default="false",
+        help="OwnBook value for both engines (default: false)",
+    )
+    parser.add_argument(
+        "--new-ownbook",
+        choices=["true", "false"],
+        default=None,
+        help="OwnBook override for NEW engine",
+    )
+    parser.add_argument(
+        "--base-ownbook",
+        choices=["true", "false"],
+        default=None,
+        help="OwnBook override for BASE engine",
+    )
+    parser.add_argument(
+        "--allow-option-asymmetry",
+        action="store_true",
+        help="allow different NEW/BASE option values (disabled by default)",
+    )
     parser.add_argument(
         "--sprt",
         default="elo0=0 elo1=8 alpha=0.05 beta=0.05",
         help="SPRT parameters for cutechess -sprt",
-    )
-    parser.add_argument(
-        "--new-ownbook-option",
-        action="store_true",
-        default=True,
-        help="send option.OwnBook=false to NEW engine (default: on)",
-    )
-    parser.add_argument(
-        "--no-new-ownbook-option",
-        action="store_false",
-        dest="new_ownbook_option",
-        help="do not send OwnBook option to NEW engine",
-    )
-    parser.add_argument(
-        "--base-ownbook-option",
-        action="store_true",
-        default=False,
-        help="send option.OwnBook=false to BASE engine (default: off)",
     )
     parser.add_argument(
         "--openings",
@@ -130,7 +141,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--pgnout", default="", help="optional output PGN path")
     parser.add_argument("--dry-run", action="store_true", help="print command and exit")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    args.new_eval_mode = args.eval_mode if args.new_eval_mode is None else args.new_eval_mode
+    args.base_eval_mode = args.eval_mode if args.base_eval_mode is None else args.base_eval_mode
+
+    ownbook_default = args.ownbook == "true"
+    args.new_ownbook = ownbook_default if args.new_ownbook is None else (args.new_ownbook == "true")
+    args.base_ownbook = ownbook_default if args.base_ownbook is None else (args.base_ownbook == "true")
+
+    return args
 
 
 def validate_inputs(args: argparse.Namespace) -> None:
@@ -148,6 +168,16 @@ def validate_inputs(args: argparse.Namespace) -> None:
         raise ValueError("--new-threads must be > 0")
     if args.base_threads <= 0:
         raise ValueError("--base-threads must be > 0")
+    if args.new_eval_mode < 0 or args.base_eval_mode < 0:
+        raise ValueError("EvalMode must be >= 0")
+
+    if not args.allow_option_asymmetry:
+        if args.new_threads != args.base_threads:
+            raise ValueError("Option asymmetry: Threads differ (use --allow-option-asymmetry to override)")
+        if args.new_eval_mode != args.base_eval_mode:
+            raise ValueError("Option asymmetry: EvalMode differs (use --allow-option-asymmetry to override)")
+        if args.new_ownbook != args.base_ownbook:
+            raise ValueError("Option asymmetry: OwnBook differs (use --allow-option-asymmetry to override)")
 
 
 def main() -> int:
@@ -159,6 +189,15 @@ def main() -> int:
         return 2
 
     cmd = build_cmd(args)
+    print("options:")
+    print(
+        f"NEW: Hash={args.hash_mb} Threads={args.new_threads} "
+        f"OwnBook={'true' if args.new_ownbook else 'false'} EvalMode={args.new_eval_mode}"
+    )
+    print(
+        f"BASE: Hash={args.hash_mb} Threads={args.base_threads} "
+        f"OwnBook={'true' if args.base_ownbook else 'false'} EvalMode={args.base_eval_mode}"
+    )
     print("command:")
     print(" ".join(shlex.quote(x) for x in cmd))
 
