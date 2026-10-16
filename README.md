@@ -69,6 +69,7 @@ Užitočné diagnostické UCI helper príkazy:
 - `eval` vypíše static eval pre aktuálnu pozíciu.
 - `evaldiff` porovná two-path evaluáciu (list-path vs scan-path) bez searchu a vypíše prvý odlišný komponent.
 - `evalstate` vypíše stav NNUE akumulátora (valid/match/inc/ref).
+- `halfkpdump` vypíše HalfKP indexy v diff-friendly formáte; perspektívy sú pevne `p0 = strana na ťahu (STM)`, `p1 = súper (OPP)`.
 
 - Ak máš `./chess`, funguje ako UCI engine, ale je dynamicky linkovaný (SDL knižnice musia byť dostupné).
 - Ak máš `./chess-static`, je to odporúčaný variant pre benchmarky, self-play a CI (plne statický textový build).

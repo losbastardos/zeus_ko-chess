@@ -1,0 +1,60 @@
+# HalfKP equivalence set (30-50 FEN), p0=STM / p1=OPP
+# Zahŕňa: start, middlegame, endgame, promócie, castling rights, obe farby,
+# a aj edge prípady s blízkymi kráľmi.
+
+# Start / opening-like
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+rnbqkbnr/pppppppp/8/8/8/3P4/PPP1PPPP/RNBQKBNR b KQkq - 0 1
+r1bqkbnr/pppp1ppp/2n5/4p3/3P4/2N2N2/PPP1PPPP/R1BQKB1R w KQkq - 2 4
+r1bqk1nr/pppp1ppp/2n5/2b1p3/3P4/2N2N2/PPP1PPPP/R1BQKB1R b KQkq - 3 4
+
+# Middlegame structures
+r2q1rk1/pp2bppp/2n1pn2/2bp4/2P5/2NP1NP1/PP2PPBP/R1BQ1RK1 w - - 0 9
+r2q1rk1/pp2bppp/2n1pn2/2bp4/2P5/2NP1NP1/PP2PPBP/R1BQ1RK1 b - - 1 9
+2r2rk1/pp1bbppp/2n1pn2/2qp4/3P4/2P1PN2/PPBNBPPP/R2Q1RK1 w - - 4 12
+2r2rk1/pp1bbppp/2n1pn2/2qp4/3P4/2P1PN2/PPBNBPPP/R2Q1RK1 b - - 5 12
+r3k2r/ppp2ppp/2n1bn2/3qp3/3P4/2PB1N2/PP3PPP/RNBQ1RK1 w kq - 0 10
+r3k2r/ppp2ppp/2n1bn2/3qp3/3P4/2PB1N2/PP3PPP/RNBQ1RK1 b kq - 1 10
+
+# Endgames (2-3 pieces, simple)
+8/8/8/8/8/8/4K3/7k w - - 0 1
+8/8/8/8/8/8/4K3/7k b - - 1 1
+8/8/8/8/8/8/4K3/6Rk w - - 0 1
+8/8/8/8/8/8/4K3/6Rk b - - 1 1
+8/8/8/8/8/8/4K3/6Qk w - - 0 1
+8/8/8/8/8/8/4K3/6Qk b - - 1 1
+8/8/8/8/8/3k4/8/4K3 w - - 0 1
+8/8/8/8/8/3k4/8/4K3 b - - 1 1
+
+# Promoted pieces present
+4k3/7Q/8/8/8/8/8/4K3 w - - 0 1
+4k3/7Q/8/8/8/8/8/4K3 b - - 1 1
+4k3/8/8/8/8/8/7n/4K3 w - - 0 1
+4k3/8/8/8/8/8/7n/4K3 b - - 1 1
+4k3/8/8/8/8/8/5B2/4K3 w - - 0 1
+4k3/8/8/8/8/8/5B2/4K3 b - - 1 1
+
+# Castling rights variants (features ich nepouzivaju, parser/indexer musi prezit)
+r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1
+r3k2r/8/8/8/8/8/8/R3K2R w KQ - 0 1
+r3k2r/8/8/8/8/8/8/R3K2R w kq - 0 1
+r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1
+r3k2r/8/8/8/8/8/8/R3K2R b - - 0 1
+
+# En-passant field variants
+rnbqkbnr/pppppppp/8/8/3Pp3/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 2
+rnbqkbnr/pppppppp/8/8/3Pp3/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 2
+
+# Kings close / adjacent edge cases
+8/8/8/8/8/8/4Kk2/8 w - - 0 1
+8/8/8/8/8/8/4Kk2/8 b - - 0 1
+8/8/8/8/8/4k3/5K2/8 w - - 0 1
+8/8/8/8/8/4k3/5K2/8 b - - 0 1
+
+# Dense random-ish legal mixes
+2r3k1/1p3pp1/p2b1n1p/3P4/1P2P3/P1N2N2/5PPP/2R3K1 w - - 0 24
+2r3k1/1p3pp1/p2b1n1p/3P4/1P2P3/P1N2N2/5PPP/2R3K1 b - - 1 24
+4rrk1/1p1q1pp1/p2bp2p/3p4/3P4/1P2PN2/PBQ2PPP/3RR1K1 w - - 2 20
+4rrk1/1p1q1pp1/p2bp2p/3p4/3P4/1P2PN2/PBQ2PPP/3RR1K1 b - - 3 20
+r1b2rk1/pp3ppp/2n1pn2/2qp4/3P4/2PBPN2/PPQ2PPP/R1B2RK1 w - - 0 11
+r1b2rk1/pp3ppp/2n1pn2/2qp4/3P4/2PBPN2/PPQ2PPP/R1B2RK1 b - - 1 11
