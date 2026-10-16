@@ -202,6 +202,14 @@ uci_loop:
     test rax, rax
     jnz .nnuewalk
 
+    ; 'halfkpdump' (non-standard helper: HalfKP index dump, p0=STM, p1=OPP)
+    mov rdi, r12
+    mov rsi, rbx
+    lea rdx, [rel .str_halfkpdump]
+    call uci_str_eq
+    test rax, rax
+    jnz .halfkpdump
+
     ; 'perft' (non-standard helper: perft N na aktualnej pozicii)
     mov rdi, r12
     mov rsi, rbx
@@ -1516,6 +1524,77 @@ uci_loop:
     call write_str
     jmp .loop
 
+.halfkpdump:
+    ; Perspektivna konvencia dumpu:
+    ; p0 = strana na tahu (STM), p1 = super (OPP).
+    ; ks je king_rel pouzity indexerom danej perspektivy.
+    lea rdi, [rel .out_halfkpdump_hdr]
+    call write_cstr
+
+    ; p0 (STM)
+    movzx edx, byte [side]
+    lea rdi, [uci_halfkp_idxbuf]
+    call nnue2_halfkp_collect     ; eax=count, ecx=ks
+    mov r8d, eax                  ; count
+    mov r9d, ecx                  ; ks
+    lea rdi, [rel .out_halfkp_p0]
+    call write_cstr
+    mov eax, r9d
+    call print_number
+    lea rdi, [rel .out_halfkp_n]
+    call write_cstr
+    mov eax, r8d
+    call print_number
+    lea rdi, [rel .out_halfkp_idx]
+    call write_cstr
+    xor r10d, r10d
+.halfkp_p0_idx_loop:
+    cmp r10d, r8d
+    jae .halfkp_p0_done
+    lea rdi, [rel .out_halfkp_sp]
+    call write_cstr
+    mov eax, [uci_halfkp_idxbuf + r10*4]
+    call print_number
+    inc r10d
+    jmp .halfkp_p0_idx_loop
+.halfkp_p0_done:
+    lea rdi, [msg_newline]
+    mov rdx, 1
+    call write_str
+
+    ; p1 (OPP)
+    movzx edx, byte [side]
+    xor edx, 1
+    lea rdi, [uci_halfkp_idxbuf]
+    call nnue2_halfkp_collect     ; eax=count, ecx=ks
+    mov r8d, eax
+    mov r9d, ecx
+    lea rdi, [rel .out_halfkp_p1]
+    call write_cstr
+    mov eax, r9d
+    call print_number
+    lea rdi, [rel .out_halfkp_n]
+    call write_cstr
+    mov eax, r8d
+    call print_number
+    lea rdi, [rel .out_halfkp_idx]
+    call write_cstr
+    xor r10d, r10d
+.halfkp_p1_idx_loop:
+    cmp r10d, r8d
+    jae .halfkp_p1_done
+    lea rdi, [rel .out_halfkp_sp]
+    call write_cstr
+    mov eax, [uci_halfkp_idxbuf + r10*4]
+    call print_number
+    inc r10d
+    jmp .halfkp_p1_idx_loop
+.halfkp_p1_done:
+    lea rdi, [msg_newline]
+    mov rdx, 1
+    call write_str
+    jmp .loop
+
 .done:
     call pgn_quit             ; uzavrie partiu a zavrie games.pgn
     pop r12
@@ -1542,5 +1621,13 @@ uci_loop:
 .str_evalstate: db "evalstate", 0
 .str_hashtest: db "hashtest", 0
 .str_nnuewalk: db "nnuewalk", 0
+.str_halfkpdump: db "halfkpdump", 0
 .str_rootdiag: db "rootdiag", 0
 .str_perft:   db "perft", 0
+
+.out_halfkpdump_hdr: db "halfkpdump", 10, 0
+.out_halfkp_p0: db "p0 ks=", 0
+.out_halfkp_p1: db "p1 ks=", 0
+.out_halfkp_n: db " n=", 0
+.out_halfkp_idx: db " idx:", 0
+.out_halfkp_sp: db " ", 0

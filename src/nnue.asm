@@ -182,6 +182,7 @@ nnue2_shift2: dd 0
 section .text
 global nnue2_load, nnue2_eval
 global nnue2_feature_idx, nnue2_refresh
+global nnue2_halfkp_idx, nnue2_halfkp_collect
 global nnue2_move_delta, nnue2_move_delta_inv
 global nnue2_fwd
 extern board, side, position_hash, moved_piece, captured_piece, promo_pieces
@@ -245,28 +246,169 @@ nnue2_load:
 nnue2_feature_idx:
     mov esi, eax                 ; rel_sq = sq
     test edx, edx
-    jz .rsq_ok
+    jz .fidx_rsq_ok
     xor esi, 56
-.rsq_ok:
+.fidx_rsq_ok:
     mov eax, ecx
     and eax, COLOR_MASK
     shr eax, 3                   ; farba figury 0/1
     xor eax, edx                 ; own
     and ecx, PIECE_MASK          ; typ 1..6
     cmp ecx, KING
-    je .king
+    je .fidx_king
     dec ecx                      ; typ-1 0..4
     imul eax, eax, 5
     add eax, ecx                 ; own*5 + typ-1
     shl eax, 6                   ; *64
     add eax, esi
     ret
-.king:
+
+.fidx_king:
     shl eax, 6                   ; own*64
     add eax, 640
     add eax, esi
     ret
 
+; ============================================================
+; nnue2_halfkp_idx - HalfKP index non-king figurky
+; Vstup:  eax = sq (0..63), ecx = piece bajt (typ|farba),
+;         edx = perspektiva farby (0 biela / 1 cierna), r8d = king_rel (0..63)
+; Vystup: eax = idx 0..40959
+; Formula: (((own*64 + king_rel)*5 + (typ-1))*64 + rel_sq)
+;   own = (farba figury == perspektiva) ? 0 : 1
+;   rel_sq = sq ^ 56 ak je perspektiva cierna
+; Poznamka: caller zabezpeci non-king typ (P..Q).
+; ============================================================
+nnue2_halfkp_idx:
+    mov esi, eax                 ; rel_sq = sq
+    test edx, edx
+    jz .hk_rsq_ok
+    xor esi, 56
+.hk_rsq_ok:
+    mov eax, ecx
+    and eax, COLOR_MASK
+    shr eax, 3                   ; farba figury 0/1
+    xor eax, edx                 ; own
+    and ecx, PIECE_MASK          ; typ 1..6
+    dec ecx                      ; typ-1 0..4 (caller filtruje K)
+    shl eax, 6                   ; own*64
+    add eax, r8d                 ; own*64 + king_rel
+    imul eax, eax, 5
+    add eax, ecx                 ; (...)*5 + typ-1
+    shl eax, 6                   ; *64
+    add eax, esi                 ; + rel_sq
+    ret
+
+; ============================================================
+; nnue2_halfkp_collect - zozbiera a zoradi HalfKP idx pre perspektivu
+; Vstup:  edx = perspektiva farby (0 biela / 1 cierna)
+;         rdi = cielovy buffer (dword idx[64])
+; Vystup: eax = count, ecx = king_rel (0..63), alebo 255 ak king nenajdeny
+; Poznamka: pouziva ten isty indexovac ako inference/debug dump.
+; ============================================================
+nnue2_halfkp_collect:
+    push rbx
+    push r12
+    push r13
+    push r14
+    mov r12d, edx                ; perspektiva farby
+    mov r13, rdi                 ; idx buffer
+    lea rbx, [board]
+
+    ; najdi krala danej perspektivy
+    mov ecx, 255                 ; king_rel default = invalid
+    xor r10d, r10d               ; sq
+.find_king:
+    cmp r10d, 64
+    jae .king_done
+    movzx eax, byte [rbx + r10]
+    test eax, eax
+    jz .find_king_next
+    mov edx, eax
+    and edx, PIECE_MASK
+    cmp edx, KING
+    jne .find_king_next
+    mov edx, eax
+    and edx, COLOR_MASK
+    shr edx, 3
+    cmp edx, r12d
+    jne .find_king_next
+    mov ecx, r10d                ; absolutne sq krala danej perspektivy
+    jmp .king_done
+.find_king_next:
+    inc r10d
+    jmp .find_king
+
+.king_done:
+    cmp ecx, 255
+    jne .have_king
+    xor eax, eax
+    jmp .ret
+
+.have_king:
+    test r12d, r12d
+    jz .king_rel_ok
+    xor ecx, 56
+.king_rel_ok:
+    mov r9d, ecx                 ; king_rel
+
+    ; scan non-king figur a vypocet idx
+    xor r14d, r14d               ; count
+    xor r10d, r10d               ; sq
+.scan_loop:
+    cmp r10d, 64
+    jae .sort
+    movzx esi, byte [rbx + r10]
+    test esi, esi
+    jz .scan_next
+    mov edx, esi
+    and edx, PIECE_MASK
+    cmp edx, PAWN
+    jb .scan_next
+    cmp edx, QUEEN
+    ja .scan_next                ; preskoc KING
+    mov eax, r10d
+    mov ecx, esi
+    mov edx, r12d
+    mov r8d, r9d
+    call nnue2_halfkp_idx
+    mov [r13 + r14*4], eax
+    inc r14d
+.scan_next:
+    inc r10d
+    jmp .scan_loop
+
+    ; insertion sort (n <= 30)
+.sort:
+    mov r8d, 1
+.outer:
+    cmp r8d, r14d
+    jae .done
+    mov r10d, r8d
+.inner:
+    test r10d, r10d
+    jz .outer_next
+    mov eax, [r13 + r10*4 - 4]
+    mov edx, [r13 + r10*4]
+    cmp eax, edx
+    jle .outer_next
+    mov [r13 + r10*4 - 4], edx
+    mov [r13 + r10*4], eax
+    dec r10d
+    jmp .inner
+.outer_next:
+    inc r8d
+    jmp .outer
+
+.done:
+    mov eax, r14d
+    mov ecx, r9d
+.ret:
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
 ; ============================================================
 ; nnue2_acc_delta - delta akumulatora pre jednu perspektivu
 ; Vstup:  eax = added idx (-1 = ziaden), ecx = removed idx (-1 = ziaden),

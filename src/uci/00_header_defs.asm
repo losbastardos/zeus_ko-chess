@@ -297,6 +297,7 @@ uci_nnuewalk_eval_ref_opp: resd 1
 uci_nnuewalk_moves:        resw 1024
 uci_nnuewalk_types:        resb 1024
 uci_rootdiag_enabled:      resb 1
+uci_halfkp_idxbuf:         resd 64
 
 INPUT_PEND_SIZE equ 512
 
@@ -322,6 +323,7 @@ extern nnue_load
 extern nnue2_load
 extern nnue2_eval, nnue2_refresh
 extern nnue2_fwd
+extern nnue2_halfkp_collect
 extern nnue2_ready
 extern nnue_acc_valid
 extern nnue_acc_hash
