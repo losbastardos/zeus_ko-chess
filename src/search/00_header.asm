@@ -34,7 +34,7 @@ DEFAULT REL
 %define ENABLE_LMR 1
 %endif
 %ifndef LMR_INDEX_MIN
-%define LMR_INDEX_MIN 4
+%define LMR_INDEX_MIN 5
 %endif
 %ifndef LMR_DEPTH_MIN
 %define LMR_DEPTH_MIN 3
