@@ -177,7 +177,7 @@
 %if LMR_EXTRA_NON_IMPROVING = 1
     cmp dword [rbp - 64], 0
     jne .lmr_red_done
-    cmp rdi, 2
+    cmp rdi, LMR_EXTRA_NON_IMPROVING_CHILD_DEPTH_MIN
     jl .lmr_red_done
     dec rdi
 %endif
