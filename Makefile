@@ -39,7 +39,7 @@ COMMANDS_DEBUG_LOG ?= commands_debug.log
 COMMANDS_DEBUG ?= $(shell awk -F= 'tolower($$1) ~ /^[[:space:]]*debug[[:space:]]*$$/ {v=tolower($$2); gsub(/[[:space:]]/,"",v); print (v ~ /^(1|true|yes|on)$$/ ? 1 : 0); found=1; exit} END {if (!found) print 0}' chess.ini 2>/dev/null)
 LOG_RUN = COMMANDS_DEBUG=$(COMMANDS_DEBUG) COMMANDS_DEBUG_LOG=$(COMMANDS_DEBUG_LOG) bash tests/tuning/command_debug_run.sh
 
-.PHONY: all clean run test bench bench-report strength-gate roadmap-p0 roadmap-p0-record roadmap-p0-final texel-dataset texel-label texel-fit texel-split texel-pipeline texel-trial texel-batch pawn-hash-study bitboard-tables tb-smoke tb-smoke-matrix tb-verify-3piece syzygy-oracle tb-oracle-compare suite-depth-scan suite-repeat search-ablation-scan lmr-param-sweep commands-log-tail ab-compare ab-compare-report ab-history nightly-pipeline sprt-ab arasan-matchup thread-matrix-ab sprt-threads-matrix rtbz-variants syzygy-tools syzygy-3piece review-pack review-pack-nogate review-findings variant-static variant-rfp0 variant-lmr0 variant-lmp0 variant-null0
+.PHONY: all clean run test bench bench-report perft-parity strength-gate roadmap-p0 roadmap-p0-record roadmap-p0-final texel-dataset texel-label texel-fit texel-split texel-pipeline texel-trial texel-batch pawn-hash-study bitboard-tables tb-smoke tb-smoke-matrix tb-verify-3piece syzygy-oracle tb-oracle-compare suite-depth-scan suite-repeat search-ablation-scan lmr-param-sweep commands-log-tail ab-compare ab-compare-report ab-history nightly-pipeline sprt-ab arasan-matchup thread-matrix-ab sprt-threads-matrix rtbz-variants syzygy-tools syzygy-3piece review-pack review-pack-nogate review-findings variant-static variant-rfp0 variant-lmr0 variant-lmp0 variant-null0
 
 all: $(TARGET) $(TARGET_STATIC)
 
@@ -86,6 +86,9 @@ bench: $(TARGET_STATIC)
 
 bench-report: $(TARGET_STATIC)
 	bash utils/bench_report.sh ./$(TARGET_STATIC) $(or $(RUNS),3)
+
+perft-parity: $(TARGET_STATIC)
+	$(LOG_RUN) "bash tests/perft_parity.sh \"$(or $(CANDIDATE),./$(TARGET_STATIC))\" \"$(or $(BASELINE),./$(TARGET_STATIC))\" \"$(or $(CASES),tests/suites/perft_parity_cases.txt)\""
 
 roadmap-p0: $(TARGET_STATIC)
 	$(LOG_RUN) "bash utils/strength_gate.sh \"$(or $(CANDIDATE),./$(TARGET_STATIC))\""

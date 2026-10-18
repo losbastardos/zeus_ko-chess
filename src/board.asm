@@ -52,6 +52,7 @@ extern moved_piece, captured_piece
 extern piece_chars, initial_board
 extern compute_hash
 extern pos_bb_init
+extern pos_piece_at_sq_bb
 extern pl_dirty
 extern msg_files, msg_files_len, msg_files_rev, msg_files_rev_len, msg_newline
 extern rank_char_buf, square_char_buf
@@ -333,8 +334,8 @@ print_board:
     mov rax, r12
     shl rax, 3
     add rax, rbx
-    lea rdi, [board]
-    movzx rcx, byte [rdi + rax]
+    call pos_piece_at_sq_bb
+    movzx rcx, al
 
     call print_piece_cell
 
@@ -385,8 +386,8 @@ print_board:
     mov rax, r12
     shl rax, 3
     add rax, rbx
-    lea rdi, [board]
-    movzx rcx, byte [rdi + rax]
+    call pos_piece_at_sq_bb
+    movzx rcx, al
 
     call print_piece_cell
 

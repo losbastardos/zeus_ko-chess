@@ -1,0 +1,6 @@
+# label;depth;position
+startpos_d4;4;startpos
+kiwipete_d3;3;fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1
+ep_white_d3;3;fen rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3
+promo_white_d3;3;fen 8/2P5/8/8/8/8/6p1/K6k w - - 0 1
+castle_check_d3;3;fen r3k2r/8/8/8/8/8/5q2/R3K2R w KQkq - 0 1

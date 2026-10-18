@@ -44,6 +44,7 @@ global pos_bb_init, pos_magics_init
 global pos_bb_move_delta, pos_validate
 global bb_attacks_bishop, bb_attacks_rook, bb_attacks_queen
 global is_square_attacked_bb
+global pos_piece_at_sq_bb
 
 extern board
 extern side
@@ -101,6 +102,41 @@ pos_bb_init:
 .done:
     pop r12
     pop rbx
+    ret
+
+; ============================================================
+; pos_piece_at_sq_bb - vrati figurku na poli zo stavu bb_pieces
+; Vstup:  eax = sq (0..63)
+; Vystup: al = figurka (0 ak prazdne)
+; Pozn.: board[64] nemeneny; helper pre unifikovany print path.
+; ============================================================
+pos_piece_at_sq_bb:
+    mov ecx, eax
+    mov rdx, 1
+    shl rdx, cl                  ; bit maska pre sq
+    xor eax, eax                 ; default: prazdne
+    xor r8d, r8d                 ; slot 0..11
+.slot_loop:
+    cmp r8d, 12
+    jae .done
+    lea r9, [bb_pieces]
+    mov r10, [r9 + r8*8]
+    test r10, rdx
+    jz .next_slot
+    cmp r8d, 6
+    jb .white
+    mov eax, r8d
+    sub eax, 5                   ; 6..11 -> 1..6
+    or eax, BLACK                ; cierna figurka
+    ret
+.white:
+    mov eax, r8d
+    inc eax                      ; 0..5 -> 1..6
+    ret
+.next_slot:
+    inc r8d
+    jmp .slot_loop
+.done:
     ret
 
 ; ============================================================
