@@ -409,6 +409,34 @@ bb_generate_rooks:
     ret
 
 ; ============================================================
+; bb_generate_queens - vygeneruje pseudo-legalne tahy dam
+; Vstup: r10d = own base slot (side*6)
+; ============================================================
+bb_generate_queens:
+    lea rdi, [bb_pieces]
+    mov rbx, [rdi + r10*8 + 32]
+.queen_loop:
+    test rbx, rbx
+    jz .done
+    bsf r12, rbx
+    btr rbx, r12
+    mov eax, r12d
+    mov rdx, [bb_occ]
+    call bb_attacks_bishop
+    mov r15, rax
+    mov eax, r12d
+    mov rdx, [bb_occ]
+    call bb_attacks_rook
+    or r15, rax
+    call bb_mask_own
+    and r15, rax
+    call bb_emit_targets
+    jmp .queen_loop
+
+.done:
+    ret
+
+; ============================================================
 ; generate_all_moves - bitboard rychlostna cesta (F3)
 ; ============================================================
 generate_all_moves:
@@ -454,25 +482,7 @@ generate_all_moves:
 
     ; ================= DAMY =================
 .queens:
-    lea rdi, [bb_pieces]
-    mov rbx, [rdi + r10*8 + 32]
-.queen_loop:
-    test rbx, rbx
-    jz .king
-    bsf r12, rbx
-    btr rbx, r12
-    mov eax, r12d
-    mov rdx, [bb_occ]
-    call bb_attacks_bishop
-    mov r15, rax
-    mov eax, r12d
-    mov rdx, [bb_occ]
-    call bb_attacks_rook
-    or r15, rax
-    call bb_mask_own
-    and r15, rax
-    call bb_emit_targets
-    jmp .queen_loop
+    call bb_generate_queens
 
     ; ================= KRAL + ROSADA =================
 .king:
