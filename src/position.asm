@@ -46,6 +46,7 @@ global bb_attacks_bishop, bb_attacks_rook, bb_attacks_queen
 global is_square_attacked_bb
 global pos_piece_at_sq_bb
 global pos_sync_from_board, pos_sync_move_delta
+global pos_sync_move_delta_undo
 global pos_magics_validate
 
 extern board
@@ -787,6 +788,23 @@ pos_bb_move_delta:
 ; ============================================================
 pos_sync_move_delta:
     jmp pos_bb_move_delta
+
+; ============================================================
+; pos_sync_move_delta_undo - delta sync priamo z undo entry
+; Vstup: rdi = ptr na undo zaznam, layout:
+;        +0 from, +1 to, +2 flags, +3 moved_piece, +4 captured_piece
+; ============================================================
+pos_sync_move_delta_undo:
+    movzx eax, byte [rdi + 0]   ; from
+    movzx edx, byte [rdi + 1]   ; to
+    shl edx, 6
+    or eax, edx
+    movzx edx, byte [rdi + 2]   ; flags
+    shl edx, 12
+    or eax, edx
+    movzx esi, byte [rdi + 3]   ; moved_piece
+    movzx edi, byte [rdi + 4]   ; captured_piece
+    jmp pos_sync_move_delta
 
 ; ============================================================
 ; pos_validate - bbtest harness (F3): porovna priamy bb stav

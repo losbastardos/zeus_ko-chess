@@ -227,7 +227,7 @@ extern pv_moves, pv_moves_len, pv_table, pv_len, root_pv_table, root_pv_len
 extern nodes_searched, search_last_score
 extern search_limits, uci_stop_flag
 extern apply_move_search, update_position_state
-extern pos_sync_move_delta
+extern pos_sync_move_delta, pos_sync_move_delta_undo
 extern generate_all_moves, is_in_check, evaluate
 extern promo_pieces, moved_piece, captured_piece
 extern see

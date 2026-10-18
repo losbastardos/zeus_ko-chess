@@ -730,20 +730,10 @@ unmake_move:
 .done:
     ; E10/F3 invariant: bb stav konzistentny s obnovenym board[64] cez
     ; inkrementalnu xor delta (samoinverzna, side uz je mover).
-    ; from/to/flags/moved/captured citame z undo zaznamu (registre
-    ; r12-r15 boli na tejto ceste prepisane).
-    lea rcx, [undo_stack]
-    add rcx, [undo_sp]          ; undo_sp uz ukazuje na platny zaznam
-    movzx eax, byte [rcx + 0]   ; from
-    movzx edx, byte [rcx + 1]   ; to
-    shl edx, 6
-    or eax, edx
-    movzx edx, byte [rcx + 2]   ; flags
-    shl edx, 12
-    or eax, edx                 ; 16-bitovy tah
-    movzx esi, byte [rcx + 3]   ; moved_piece
-    movzx edi, byte [rcx + 4]   ; captured_piece
-    call pos_sync_move_delta
+    ; Parametre sa nacitaju priamo z undo entry helperom.
+    lea rdi, [undo_stack]
+    add rdi, [undo_sp]          ; undo_sp uz ukazuje na platny zaznam
+    call pos_sync_move_delta_undo
     ; E10/F2: hash delta — XOR in obnovene (stare) stavove kluce; plny
     ; compute_hash netreba. acc_hash synchronizujeme len ak sa inverzna
     ; NNUE delta aplikovala (inak acc zostava nepplatny -> refresh v eval).
