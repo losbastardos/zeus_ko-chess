@@ -45,7 +45,7 @@ board_files_black:
 
 section .text
 
-global init_board, update_position_state, print_board, toggle_board_view
+global init_board, update_position_state, update_position_state_search, print_board, toggle_board_view
 
 extern board, side, castle, enpassant, halfmove, fullmove, board_flip
 extern moved_piece, captured_piece
@@ -149,6 +149,16 @@ toggle_board_view:
 ; Pozn.: side este obsahuje hraca, ktory hybal; na konci sa vymeni.
 ; ============================================================
 update_position_state:
+    jmp update_position_state_impl
+
+; ============================================================
+; update_position_state_search - search varianta (M3 hot-path)
+; Podpis identicky, oddelenie call-path od UI/CLI cesty.
+; ============================================================
+update_position_state_search:
+    jmp update_position_state_impl
+
+update_position_state_impl:
     push rax
     push rbx
     push rcx

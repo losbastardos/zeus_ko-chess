@@ -533,7 +533,7 @@ make_move:
     call hash_delta_pieces
 
     mov rax, r15
-    call update_position_state
+    call update_position_state_search
 
     ; E10/F2: hash delta — XOR in nove stavove kluce; plny compute_hash
     ; netreba. acc_hash synchronizujeme LEN ak sa NNUE delta aplikovala
