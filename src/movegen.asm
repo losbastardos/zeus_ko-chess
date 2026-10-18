@@ -342,6 +342,25 @@ bb_generate_knights:
     ret
 
 ; ============================================================
+; bb_generate_king - vygeneruje pseudo-legalne tahy krala
+; Vstup: r10d = own base slot (side*6)
+; Pozn.: rosada sa riesi samostatne v generate_castling.
+; ============================================================
+bb_generate_king:
+    lea rdi, [bb_pieces]
+    mov rbx, [rdi + r10*8 + 40]
+    test rbx, rbx
+    jz .done
+    bsf r12, rbx
+    lea rax, [bb_king_attacks]
+    mov r15, [rax + r12*8]
+    call bb_mask_own
+    and r15, rax
+    call bb_emit_targets
+.done:
+    ret
+
+; ============================================================
 ; generate_all_moves - bitboard rychlostna cesta (F3)
 ; ============================================================
 generate_all_moves:
@@ -437,18 +456,7 @@ generate_all_moves:
 
     ; ================= KRAL + ROSADA =================
 .king:
-;   jmp .debug_ret          ; TEMP DEBUG
-    lea rdi, [bb_pieces]
-    mov rbx, [rdi + r10*8 + 40]
-    test rbx, rbx
-    jz .castling
-    bsf r12, rbx
-    lea rax, [bb_king_attacks]
-    mov r15, [rax + r12*8]
-    call bb_mask_own
-    and r15, rax
-    call bb_emit_targets
-.castling:
+    call bb_generate_king
     call generate_castling
     call filter_legal_moves
 
