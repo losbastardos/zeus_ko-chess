@@ -23,46 +23,22 @@ extern is_square_attacked_bb
 ; find_king - najde policko krala danej strany
 ; Vstup:  rax = side (0 = biely, 1 = cierny)
 ; Vystup: rax = index policka 0..63, alebo -1
+; M2a: bitboard cesta cez bb_pieces[side*6 + KING-1]
 ; ============================================================
 find_king:
     push rbx
-    push rcx
-    push rdx
-    push rdi
-
-    mov rbx, rax
-    shl rbx, 3              ; farba krala v bitoch 3
-    xor rcx, rcx
-
-    lea rdi, [board]
-.search:
-    movzx rdx, byte [rdi + rcx]
-    test rdx, rdx
-    jz .next
-
-    mov rax, rdx
-    and rax, PIECE_MASK
-    cmp rax, KING
-    jne .next
-
-    mov rax, rdx
-    and rax, COLOR_MASK
-    cmp rax, rbx
-    je .found
-
-.next:
-    inc rcx
-    cmp rcx, 64
-    jl .search
-
-    mov rax, -1
+    mov ebx, eax
+    imul ebx, 6
+    lea rdx, [bb_pieces]
+    mov rax, [rdx + rbx*8 + 5*8]    ; king slot pre stranu
+    test rax, rax
+    jz .not_found
+    bsf rax, rax
     jmp .done
-.found:
-    mov rax, rcx
+
+.not_found:
+    mov rax, -1
 .done:
-    pop rdi
-    pop rdx
-    pop rcx
     pop rbx
     ret
 
@@ -90,13 +66,10 @@ is_in_check:
 
     mov r12, rax
 
-    mov eax, r12d
-    imul eax, 6
-    lea rcx, [bb_pieces]
-    mov rax, [rcx + rax*8 + 5*8]    ; king slot
-    test rax, rax
+    mov rax, r12
+    call find_king
+    cmp rax, -1
     jz .not_in_check
-    bsf rax, rax                    ; policko vlastneho krala
 
     mov rbx, r12
     call is_square_attacked_bb
