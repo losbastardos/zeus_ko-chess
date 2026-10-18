@@ -167,6 +167,8 @@ tbtest_dtz_idxbits_prefix: db "TBTEST dtz_pairs_idxbits=", 0
 tbtest_wdl_const_prefix: db "TBTEST wdl_pairs_const=", 0
 tbtest_dtz_const_prefix: db "TBTEST dtz_pairs_const=", 0
 bbtest_prefix:      db "BBTEST mismatches=", 0
+bbtest_magics_prefix: db "BBTEST magics_mismatches=", 0
+bbtest_total_prefix:  db "BBTEST total_mismatches=", 0
 
 section .text
 global _start
@@ -275,6 +277,7 @@ extern nodes_searched
 extern suite_cmd_text, suite_snapshot_save, suite_snapshot_restore
 extern tb_init, tb_probe_wdl, tb_probe_dtz, tb_piece_count, tb_map_size, tb_file_path
 extern pos_validate
+extern pos_magics_validate
 extern tb_wdl_payload_probe_byte, tb_dtz_payload_probe_byte
 extern tb_wdl_payload_probe_off, tb_dtz_payload_probe_off
 extern tb_wdl_header_flags, tb_dtz_header_flags
@@ -1596,9 +1599,25 @@ _start:
 .do_bbtest:
     call pos_validate
     mov r12, rax
+    call pos_magics_validate
+    mov r13, rax
+
     lea rdi, [bbtest_prefix]
     call write_cstr
     mov rax, r12
+    call print_number
+    call print_newline
+
+    lea rdi, [bbtest_magics_prefix]
+    call write_cstr
+    mov rax, r13
+    call print_number
+    call print_newline
+
+    lea rdi, [bbtest_total_prefix]
+    call write_cstr
+    mov rax, r12
+    add rax, r13
     call print_number
     call print_newline
     jmp .game_loop

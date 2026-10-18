@@ -46,6 +46,7 @@ global bb_attacks_bishop, bb_attacks_rook, bb_attacks_queen
 global is_square_attacked_bb
 global pos_piece_at_sq_bb
 global pos_sync_from_board, pos_sync_move_delta
+global pos_magics_validate
 
 extern board
 extern side
@@ -320,6 +321,94 @@ pos_magics_init:
     jmp .sect_loop
 .fin:
     add rsp, 24
+    pop rbp
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; ============================================================
+; pos_magics_validate - porovna magic_attacks s referenciou
+; (gen_attacks) pre vsetky podmnoziny bishop+rook masiek.
+; Vystup: rax = pocet mismatchov (0 = OK)
+; ============================================================
+pos_magics_validate:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbp
+    sub rsp, 32                  ; [0]=magic [8]=shift [16]=offset [24]=mismatch
+
+    xor eax, eax
+    mov [rsp + 24], rax
+    lea r15, [magics_bishop]
+    xor ebp, ebp                 ; 0 = bishop sekcia
+
+.sect_loop:
+    xor r12d, r12d               ; sq
+.sq_loop:
+    cmp r12d, 64
+    jae .sect_done
+
+    mov r13, r12
+    shl r13, 5                   ; sq * MAGIC_REC_SIZE
+    add r13, r15                 ; adresa zaznamu
+    mov rbx, [r13]               ; mask
+    mov rax, [r13 + 8]
+    mov [rsp], rax               ; magic
+    mov rax, [r13 + 16]
+    mov [rsp + 8], rax           ; shift
+    mov rax, [r13 + 24]
+    mov [rsp + 16], rax          ; offset
+
+    xor r14, r14                 ; subset = 0
+.sub_loop:
+    mov rax, r14
+    imul rax, [rsp]              ; subset * magic
+    mov rcx, [rsp + 8]
+    shr rax, cl                  ; idx
+
+    push rax
+    mov edi, r12d
+    mov rsi, r14
+    mov edx, ebp
+    call gen_attacks             ; rax = referencia
+    pop rcx                      ; idx
+    add rcx, [rsp + 16]          ; offset + idx
+    lea rdx, [magic_attacks]
+    mov r8, [rdx + rcx*8]        ; tabulkovy vysledok
+    cmp r8, rax
+    je .next_subset
+    inc qword [rsp + 24]
+
+.next_subset:
+    ; dalsia podmnozina: (sub - mask) & mask
+    mov rax, r14
+    sub rax, rbx
+    and rax, rbx
+    test rax, rax
+    jz .sq_next
+    mov r14, rax
+    jmp .sub_loop
+
+.sq_next:
+    inc r12d
+    jmp .sq_loop
+
+.sect_done:
+    test ebp, ebp
+    jnz .fin
+    lea r15, [magics_rook]
+    mov ebp, 1
+    jmp .sect_loop
+
+.fin:
+    mov rax, [rsp + 24]
+    add rsp, 32
     pop rbp
     pop r15
     pop r14
