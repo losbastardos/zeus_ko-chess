@@ -320,6 +320,28 @@ bb_generate_pawns:
     ret
 
 ; ============================================================
+; bb_generate_knights - vygeneruje pseudo-legalne tahy jazdcov
+; Vstup: r10d = own base slot (side*6)
+; ============================================================
+bb_generate_knights:
+    lea rdi, [bb_pieces]
+    mov rbx, [rdi + r10*8 + 8]
+.knight_loop:
+    test rbx, rbx
+    jz .done
+    bsf r12, rbx
+    btr rbx, r12
+    lea rax, [bb_knight_attacks]
+    mov r15, [rax + r12*8]
+    call bb_mask_own
+    and r15, rax
+    call bb_emit_targets
+    jmp .knight_loop
+
+.done:
+    ret
+
+; ============================================================
 ; generate_all_moves - bitboard rychlostna cesta (F3)
 ; ============================================================
 generate_all_moves:
@@ -351,21 +373,7 @@ generate_all_moves:
     call bb_generate_pawns
 
     ; ================= JAZDCI =================
-.knights:
-;   jmp .debug_ret          ; TEMP DEBUG
-    lea rdi, [bb_pieces]
-    mov rbx, [rdi + r10*8 + 8]
-.knight_loop:
-    test rbx, rbx
-    jz .bishops
-    bsf r12, rbx
-    btr rbx, r12
-    lea rax, [bb_knight_attacks]
-    mov r15, [rax + r12*8]
-    call bb_mask_own
-    and r15, rax
-    call bb_emit_targets
-    jmp .knight_loop
+    call bb_generate_knights
 
     ; ================= STRELECI =================
 .bishops:
