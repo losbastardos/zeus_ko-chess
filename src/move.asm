@@ -13,7 +13,7 @@ DEFAULT REL
 
 section .text
 
-global parse_user_move, find_move, apply_move
+global parse_user_move, find_move, apply_move, apply_move_search
 
 extern board, side, move_buf, move_list, move_count
 extern promo_pieces, moved_piece, captured_piece
@@ -92,6 +92,16 @@ find_move:
 ; Ulozi moved_piece a captured_piece pre update_position_state
 ; ============================================================
 apply_move:
+    mov byte [pl_dirty], 1
+    jmp apply_move_impl
+
+; ============================================================
+; apply_move_search - search varianta bez pl_dirty flipu
+; ============================================================
+apply_move_search:
+    jmp apply_move_impl
+
+apply_move_impl:
     push rax
     push rbx
     push rcx
@@ -100,8 +110,6 @@ apply_move:
     push r13
     push r14
     push rsi
-
-    mov byte [pl_dirty], 1
 
     movzx rbx, ax
     and rbx, 0x3F

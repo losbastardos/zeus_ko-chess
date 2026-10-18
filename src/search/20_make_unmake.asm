@@ -505,7 +505,7 @@ make_move:
 %endif
 
     mov rax, r15
-    call apply_move
+    call apply_move_search
 
     mov al, [moved_piece]
     mov [r12 + 3], al
