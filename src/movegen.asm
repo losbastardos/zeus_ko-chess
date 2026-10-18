@@ -361,6 +361,30 @@ bb_generate_king:
     ret
 
 ; ============================================================
+; bb_generate_bishops - vygeneruje pseudo-legalne tahy strelcov
+; Vstup: r10d = own base slot (side*6)
+; ============================================================
+bb_generate_bishops:
+    lea rdi, [bb_pieces]
+    mov rbx, [rdi + r10*8 + 16]
+.bishop_loop:
+    test rbx, rbx
+    jz .done
+    bsf r12, rbx
+    btr rbx, r12
+    mov eax, r12d
+    mov rdx, [bb_occ]
+    call bb_attacks_bishop
+    mov r15, rax
+    call bb_mask_own
+    and r15, rax
+    call bb_emit_targets
+    jmp .bishop_loop
+
+.done:
+    ret
+
+; ============================================================
 ; generate_all_moves - bitboard rychlostna cesta (F3)
 ; ============================================================
 generate_all_moves:
@@ -397,21 +421,7 @@ generate_all_moves:
     ; ================= STRELECI =================
 .bishops:
 ;   jmp .debug_ret          ; TEMP DEBUG
-    lea rdi, [bb_pieces]
-    mov rbx, [rdi + r10*8 + 16]
-.bishop_loop:
-    test rbx, rbx
-    jz .rooks
-    bsf r12, rbx
-    btr rbx, r12
-    mov eax, r12d
-    mov rdx, [bb_occ]
-    call bb_attacks_bishop
-    mov r15, rax
-    call bb_mask_own
-    and r15, rax
-    call bb_emit_targets
-    jmp .bishop_loop
+    call bb_generate_bishops
 
     ; ================= VEZE =================
 .rooks:
