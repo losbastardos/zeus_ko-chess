@@ -45,6 +45,7 @@ global pos_bb_move_delta, pos_validate
 global bb_attacks_bishop, bb_attacks_rook, bb_attacks_queen
 global is_square_attacked_bb
 global pos_piece_at_sq_bb
+global pos_sync_from_board, pos_sync_move_delta
 
 extern board
 extern side
@@ -103,6 +104,14 @@ pos_bb_init:
     pop r12
     pop rbx
     ret
+
+; ============================================================
+; pos_sync_from_board - jednotny full sync entrypoint (M1)
+; Vstup: board[64] uz obsahuje novu poziciu
+; Vystup: bb_pieces/bb_side/bb_occ zosynchronizovane z board
+; ============================================================
+pos_sync_from_board:
+    jmp pos_bb_init
 
 ; ============================================================
 ; pos_piece_at_sq_bb - vrati figurku na poli zo stavu bb_pieces
@@ -682,6 +691,13 @@ pos_bb_move_delta:
     pop rbp
     pop rbx
     ret
+
+; ============================================================
+; pos_sync_move_delta - jednotny delta sync entrypoint (M1)
+; Vstup/Vystup rovnaky ako pos_bb_move_delta
+; ============================================================
+pos_sync_move_delta:
+    jmp pos_bb_move_delta
 
 ; ============================================================
 ; pos_validate - bbtest harness (F3): porovna priamy bb stav

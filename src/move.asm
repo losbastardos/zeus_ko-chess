@@ -17,7 +17,7 @@ global parse_user_move, find_move, apply_move
 
 extern board, side, move_buf, move_list, move_count
 extern promo_pieces, moved_piece, captured_piece
-extern pos_bb_move_delta
+extern pos_sync_move_delta
 extern pl_dirty
 
 ; ============================================================
@@ -230,7 +230,7 @@ apply_move:
     or eax, ecx             ; 16-bitovy tah
     movzx esi, byte [moved_piece]
     movzx edi, byte [captured_piece]
-    call pos_bb_move_delta
+    call pos_sync_move_delta
     pop rsi
     pop r14
     pop r13

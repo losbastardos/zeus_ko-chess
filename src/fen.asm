@@ -19,7 +19,7 @@ extern board, side, castle, enpassant, halfmove, fullmove
 extern piece_chars
 extern compute_hash, init_hash_history, record_hash
 extern parse_int
-extern pos_bb_init
+extern pos_sync_from_board
 extern pl_dirty
 extern print_number
 
@@ -379,7 +379,7 @@ parse_fen_string:
     mov [fullmove], ax
 
     ; hash & history
-    call pos_bb_init               ; E10/F1: bb stav konzistentny s board
+    call pos_sync_from_board       ; M1: jednotny full sync entrypoint
     call compute_hash
     call init_hash_history
     call record_hash

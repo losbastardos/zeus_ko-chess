@@ -743,7 +743,7 @@ unmake_move:
     or eax, edx                 ; 16-bitovy tah
     movzx esi, byte [rcx + 3]   ; moved_piece
     movzx edi, byte [rcx + 4]   ; captured_piece
-    call pos_bb_move_delta
+    call pos_sync_move_delta
     ; E10/F2: hash delta — XOR in obnovene (stare) stavove kluce; plny
     ; compute_hash netreba. acc_hash synchronizujeme len ak sa inverzna
     ; NNUE delta aplikovala (inak acc zostava nepplatny -> refresh v eval).
