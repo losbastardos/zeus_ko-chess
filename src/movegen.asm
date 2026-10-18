@@ -130,38 +130,14 @@ bb_emit_promos:
     ret
 
 ; ============================================================
-; generate_all_moves - bitboard rychlostna cesta (F3)
+; bb_generate_pawns - vygeneruje pseudo-legalne pesiakove tahy
+; Vstup: r10d = own base slot (side*6), r11d = enemy base slot
 ; ============================================================
-generate_all_moves:
-    inc qword [prof_movegen]
-    push rax
-    push rbx
-    push rcx
-    push rdx
-    push rsi
-    push rdi
-    push r8
-    push r9
-    push r10
-    push r11
-    push r12
-    push r13
-    push r14
-    push r15
-
-    mov word [move_count], 0
-;   jmp .debug_ret          ; TEMP DEBUG
-
-    movzx r10d, byte [side]
-    mov r11d, r10d
-    xor r11d, 1                 ; enemy side idx
-    imul r10d, r10d, 6          ; vlastny base slot
-
-    ; ================= PESIACI =================
+bb_generate_pawns:
     lea rdi, [bb_pieces]
     mov rbx, [rdi + r10*8]      ; vlastni pesiaci
     test rbx, rbx
-    jz .knights
+    jz .done
     cmp byte [side], 0
     jne .pawns_black
 
@@ -228,7 +204,7 @@ generate_all_moves:
     ; en passant: zdroje = ((ep>>7)&~FILE_A | (ep>>9)&~FILE_H) & pawns
     movzx eax, byte [enpassant]
     cmp eax, 255
-    je .knights
+    je .done
     mov ecx, eax
     mov rax, 1
     shl rax, cl                 ; epbit
@@ -245,7 +221,7 @@ generate_all_moves:
     mov r14d, FLAG_ENPASSANT
 .ep_w_loop:
     test rdx, rdx
-    jz .knights
+    jz .done
     bsf r12, rdx
     btr rdx, r12
     movzx r13d, byte [enpassant]
@@ -316,7 +292,7 @@ generate_all_moves:
     ; en passant: zdroje = ((ep<<7)&~FILE_H | (ep<<9)&~FILE_A) & pawns
     movzx eax, byte [enpassant]
     cmp eax, 255
-    je .knights
+    je .done
     mov ecx, eax
     mov rax, 1
     shl rax, cl
@@ -330,16 +306,49 @@ generate_all_moves:
     and rcx, rsi
     or rdx, rcx
     and rdx, rbx
-    movzx r13d, byte [enpassant]
     mov r14d, FLAG_ENPASSANT
 .ep_b_loop:
     test rdx, rdx
-    jz .knights
+    jz .done
     bsf r12, rdx
     btr rdx, r12
     movzx r13d, byte [enpassant]
     call add_move
     jmp .ep_b_loop
+
+.done:
+    ret
+
+; ============================================================
+; generate_all_moves - bitboard rychlostna cesta (F3)
+; ============================================================
+generate_all_moves:
+    inc qword [prof_movegen]
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov word [move_count], 0
+;   jmp .debug_ret          ; TEMP DEBUG
+
+    movzx r10d, byte [side]
+    mov r11d, r10d
+    xor r11d, 1                 ; enemy side idx
+    imul r10d, r10d, 6          ; vlastny base slot
+
+    ; ================= PESIACI =================
+    call bb_generate_pawns
 
     ; ================= JAZDCI =================
 .knights:
