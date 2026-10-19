@@ -42,7 +42,7 @@ if [[ "$BUILD_BIN" == "1" ]]; then
 fi
 
 echo "[2/4] Running regression"
-bash tests/regression.sh >/dev/null
+ENGINE_PATH="$ENGINE_PATH" bash tests/regression.sh >/dev/null
 
 run_suite() {
     local suite_file="$1"
