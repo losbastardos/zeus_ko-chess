@@ -180,9 +180,9 @@ quiescence:
     movzx edi, ax
     shr rdi, 6
     and edi, 0x3F           ; to
+    bt qword [bb_occ], rdi
+    jnc .qs_sel_cmp         ; tichy tah: skore 0
     movzx edi, byte [rsi + rdi]
-    test edi, edi
-    jz .qs_sel_cmp          ; tichy tah: skore 0
     ; MVV-LVA: 200000 + 10*obet - utocnik (zaklad bezpecne nad max.
     ; quiet skore 50k+45k+40k, tiche tahy sa nikdy nemiesaju pred brania)
     and edi, PIECE_MASK
@@ -282,10 +282,10 @@ quiescence:
     mov r9, rax
     shr r9, 6
     and r9, 0x3F
+    bt qword [bb_occ], r9
+    jnc .qs_next
     lea rsi, [board]
     movzx edx, byte [rsi + r9]
-    test edx, edx
-    jz .qs_next
 
     ; delta pruning pre beznu branu figurku
 %if ENABLE_QDELTA = 0
