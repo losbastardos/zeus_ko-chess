@@ -150,8 +150,8 @@ search_best_move:
     movzx edi, ax
     shr edi, 6
     and edi, 0x3F
-    cmp byte [rsi + rdi], EMPTY
-    jne .root_cap_normal
+    bt qword [bb_occ], rdi
+    jc .root_cap_normal
 
     ; cieleny tie-break: nepreferuj manualny krok kralom z e1/e8,
     ; ked su root skore remizovane.
