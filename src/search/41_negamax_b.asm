@@ -357,8 +357,8 @@
     shr edi, 6
     and edi, 0x3F                ; to
     lea rsi, [board]
-    cmp byte [rsi + rdi], EMPTY
-    jne .cutoff_capture
+    bt qword [bb_occ], rdi
+    jc .cutoff_capture
     test r9d, r9d
     jnz .cutoff_done             ; promo bez brania: nie je to cisty quiet tah
     ; killers: posun a uloz (ak uz nie je killer1)
