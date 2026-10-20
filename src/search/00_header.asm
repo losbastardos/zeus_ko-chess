@@ -234,6 +234,7 @@ extern see
 extern compute_hash
 extern hash_delta_pieces, hash_delta_state
 extern nnue2_move_delta, nnue2_move_delta_inv, nnue_acc_hash
+extern bb_occ
 extern tt_probe, tt_store, position_hash
 extern check_repetition
 extern hash_history, hash_count

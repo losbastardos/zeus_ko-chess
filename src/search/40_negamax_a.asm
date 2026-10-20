@@ -907,9 +907,8 @@ negamax:
     movzx edi, ax
     shr edi, 6
     and edi, 0x3F
-    lea rsi, [board]
-    cmp byte [rsi + rdi], EMPTY
-    jne .quiet_done
+    bt qword [bb_occ], rdi
+    jc .quiet_done
     mov r12d, 1
 .quiet_done:
 
@@ -939,18 +938,16 @@ negamax:
     movzx edi, ax
     shr edi, 6
     and edi, 0x3F
-    lea rsi, [board]
-    cmp byte [rsi + rdi], EMPTY
-    je .no_cap_see_prune        ; promo bez brania
+    bt qword [bb_occ], rdi
+    jnc .no_cap_see_prune       ; promo bez brania
     jmp .cap_see_is_capture
 
 .cap_see_check_to:
     movzx edi, ax
     shr edi, 6
     and edi, 0x3F
-    lea rsi, [board]
-    cmp byte [rsi + rdi], EMPTY
-    je .no_cap_see_prune
+    bt qword [bb_occ], rdi
+    jnc .no_cap_see_prune
 
 .cap_see_is_capture:
     imul edx, edx, -120         ; prah = -120 * depth
