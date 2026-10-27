@@ -15,6 +15,13 @@
 %define ENABLE_PL_INFRA 1
 %endif
 
+; Bitboard layout helper konstanty (infra vrstva; bez zmeny evaluacnej logiky).
+BB_SLOT_BYTES         equ 8
+BB_COLOR_STRIDE_BYTES equ 48      ; 6 slotov * 8B (P,N,B,R,Q,K)
+BB_WHITE_PAWN_OFF     equ 0
+BB_BLACK_PAWN_OFF     equ 48
+BB_KNIGHT_SLOT_OFF    equ 8
+
 DEFAULT REL
 
 section .data
@@ -707,9 +714,9 @@ evaluate:
     ; ---- pawn masky + file counts priamo z bitboardov ----
     ; (bitboard stav je primarny a po kazdom make/unmake synchronizovany)
     lea rax, [bb_pieces]
-    mov rdx, [rax]              ; bb_pieces[biela*6 + P-1]
+    mov rdx, [rax + BB_WHITE_PAWN_OFF]  ; bb_pieces[biela*6 + P-1]
     mov [rbp - 8], rdx
-    mov rdx, [rax + 6*8]        ; bb_pieces[cierna*6 + P-1]
+    mov rdx, [rax + BB_BLACK_PAWN_OFF]  ; bb_pieces[cierna*6 + P-1]
     mov [rbp - 16], rdx
     lea rsi, [file_masks]
     xor ecx, ecx
@@ -743,10 +750,10 @@ evaluate:
     mov rax, [rax + r12*8]
     mov [rbp - 112], rax         ; vlastna maska
     lea rax, [r12 + r12*2]
-    shl rax, 4                   ; color*48
+    shl rax, 4                   ; color*48 (BB_COLOR_STRIDE_BYTES)
     lea rdx, [bb_pieces]
     add rax, rdx
-    add rax, 8                   ; base = &bb_pieces[color*6 + 1] (jazdec)
+    add rax, BB_KNIGHT_SLOT_OFF  ; base = &bb_pieces[color*6 + 1] (jazdec)
     mov [rbp - 120], rax
 
     MOB_BLOCK 0,  KNIGHT, 0, 1
