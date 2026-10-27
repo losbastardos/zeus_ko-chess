@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """HalfKP v3 trainer (Faza 1 sanity, trainer-side only).
 
+line closed 2026-10-27, kept for reference.
+
 Architektura: 2x256 vetvy (STM + OPP), sparse HalfKP features.
 Gate:
 - ratio < gate_pass: PASS
@@ -279,6 +281,9 @@ def main() -> int:
     W2o = rng.normal(0.0, 0.02, size=H).astype(np.float32)
     b2 = np.float32(0.0)
 
+    w1_absmax_init = float(max(np.abs(W1s).max(), np.abs(W1o).max()))
+    print(f"probe_init: w1_absmax={w1_absmax_init:.6f}", flush=True)
+
     mW1s = np.zeros_like(W1s); vW1s = np.zeros_like(W1s)
     mW1o = np.zeros_like(W1o); vW1o = np.zeros_like(W1o)
     mb1s = np.zeros_like(b1s); vb1s = np.zeros_like(b1s)
@@ -360,6 +365,8 @@ def main() -> int:
         probe_rows.append(f"{epoch+1}\t{w1_absmax_epoch:.6f}\t{grad_w1_l2:.6f}\t{grad_w2_l2:.6f}\t{ratio:.6f}")
         if epoch == 0 or (epoch + 1) % 5 == 0:
             print(f"epoch {epoch+1}: train_mse={train_mse:.5f} val_mse={val_mse:.5f} ratio={ratio:.6f}", flush=True)
+        if epoch == 0:
+            print(f"probe_epoch1_end: w1_absmax={w1_absmax_epoch:.6f}", flush=True)
         if args.probe_every > 0 and ((epoch + 1) % args.probe_every == 0 or epoch == 0):
             print(
                 f"probe {epoch+1}: w1_absmax={w1_absmax_epoch:.6f} "

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Prepare a Texel-style dataset from PGN games.
 
+line closed 2026-10-27, kept for reference.
+
 Output CSV columns:
 - fen: board FEN including side/castling/en-passant and counters
 - result: white-game result label in {1.0, 0.5, 0.0}
@@ -75,7 +77,7 @@ def collect_rows(paths: List[str], cfg: ExportConfig):
 
             if ply <= cfg.skip_plies:
                 continue
-            if (ply - cfg.skip_plies) % cfg.sample_every != 0:
+            if (ply - cfg.skip_plies + (total_games & 1)) % cfg.sample_every != 0:
                 continue
 
             rows.append(

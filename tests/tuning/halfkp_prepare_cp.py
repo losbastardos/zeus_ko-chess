@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Priprava HalfKP 50k datasetu (Faza 1, trainer-side only).
+"""Priprava HalfKP datasetu (trainer-side only).
 
-Vstup: CSV s polami fen, eval_cp.
+line closed 2026-10-27, kept for reference.
+
+Vstup: CSV s polami fen + eval_cp alebo result.
 Vystup: NPZ s kompaktnymi sparse featurami pre p0(STM) a p1(OPP).
 """
 
@@ -28,10 +30,11 @@ MAX_ACTIVE = 64  # bezpecna rezerva (typicky <=30)
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Prepare HalfKP CP dataset (CSV -> NPZ)")
-    p.add_argument("--csv", required=True, help="input CSV with columns fen, eval_cp")
+    p.add_argument("--csv", required=True, help="input CSV with columns fen + eval_cp/result")
     p.add_argument("--out", required=True, help="output NPZ path")
     p.add_argument("--max-positions", type=int, default=50000)
     p.add_argument("--cp-clip", type=float, default=2000.0)
+    p.add_argument("--label-column", choices=["eval_cp", "result"], default="eval_cp")
     p.add_argument("--cp-label-perspective", choices=["stm", "white"], default="stm")
     return p.parse_args()
 
@@ -46,18 +49,31 @@ def main() -> int:
         for row in csv.DictReader(f):
             try:
                 fen = row["fen"]
-                cp = float(row["eval_cp"])
             except Exception:
                 continue
 
             stm_black = fen.split()[1] == "b"
-            if args.cp_label_perspective == "white" and stm_black:
-                cp = -cp
-            if args.cp_clip > 0:
-                cp = max(-args.cp_clip, min(args.cp_clip, cp))
+
+            if args.label_column == "eval_cp":
+                try:
+                    cp = float(row["eval_cp"])
+                except Exception:
+                    continue
+                if args.cp_label_perspective == "white" and stm_black:
+                    cp = -cp
+                if args.cp_clip > 0:
+                    cp = max(-args.cp_clip, min(args.cp_clip, cp))
+                yv = cp
+            else:
+                try:
+                    # result je white-perspective; pre STM ho treba preklopit pre cierneho na tahu.
+                    rv = float(row["result"])
+                except Exception:
+                    continue
+                yv = (1.0 - rv) if stm_black else rv
 
             fens.append(fen)
-            ys.append(cp)
+            ys.append(yv)
             if args.max_positions > 0 and len(fens) >= args.max_positions:
                 break
 
