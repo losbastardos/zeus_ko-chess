@@ -1412,20 +1412,37 @@ evaluate:
 .cpp_done:
 
     ; --- veze: open/semi-open file, 7. rank ---
-    xor r12, r12
-.rook_loop:
-    lea rsi, [board]
-    movzx eax, byte [rsi + r12]
-    mov ebx, eax
-    and ebx, PIECE_MASK
-    cmp ebx, ROOK
-    jne .rook_next
-    mov r13d, eax
-    and r13d, COLOR_MASK
+    ; 3A loop fix: iteracny index drzat oddelene (r9d),
+    ; pomocne premenne pre bsf/rank nikdy nesmu prepisovat index.
+    mov r14d, 3                 ; white rooks (piece index)
+.rook_kind_loop:
+    movzx r11d, byte [pl_counts + r14]
+    test r11d, r11d
+    jz .rook_kind_done
+    mov eax, r14d
+    shl rax, 4                  ; 16B slot na piece kind
+    lea r8, [pl_lists]
+    add r8, rax
+    xor r9d, r9d                ; index v zozname 0..count-1
+
+.rook_entry_loop:
+    cmp r9d, r11d
+    jge .rook_kind_done
+    movzx r12d, byte [r8 + r9]
+    cmp r14d, 6
+    jb .rook_white
+    mov r13d, BLACK
+    jmp .rook_eval
+.rook_white:
+    xor r13d, r13d
+
+.rook_eval:
+    ; reset per-iteracia: file mask aj rank sa pocitaju iba zo sq v r12
     mov rbx, r12
     and rbx, 7
     lea rsi, [file_masks]
     mov rdi, [rsi + rbx*8]
+
     ; open file? ziadny pesiak (ani biely ani cierny)
     mov rax, [rbp - 8]
     or rax, [rbp - 16]
@@ -1457,7 +1474,7 @@ evaluate:
     sub r15d, ROOK_SEMI
 .rook_rank:
     ; 7. rank: biely rank 6, cierny rank 1
-    mov rax, r12
+    mov eax, r12d
     shr eax, 3
     test r13d, r13d
     jnz .rook_rank_b
@@ -1473,44 +1490,51 @@ evaluate:
 
 .rook_behind_w:
     ; rook behind passed pawn (biely): veza je na rovnakom file, nizsi rank ako passer
-    ; file mask = rdi (uz vypocitana ako jednofile mask v rbx*8)
     lea rsi, [file_masks]
     mov rdi, [rsi + rbx*8]     ; rbx = file of rook
     test r13d, r13d
     jnz .rook_behind_b          ; len biela veza
     mov rax, [passed_w]         ; passed white bitmask
     and rax, rdi                ; biely passer na rovnakom file?
-    jz .rook_next
-    bsf rcx, rax                ; najdi passera
+    jz .rook_next_entry
+    bsf rcx, rax                ; najdi passera (lokalny temp)
     mov edx, ecx
     shr edx, 3                  ; rank passera
     mov eax, r12d
     shr eax, 3                  ; rank vezy
     cmp eax, edx                ; veza musi byt NIZSSIE ako passer
-    jge .rook_next
+    jge .rook_next_entry
     add r15d, ROOK_BEHIND_PP
-    jmp .rook_next
+    jmp .rook_next_entry
 .rook_behind_b:
     ; cierna veza za ciernym passerom: veza je na rovnakom file, VYSSI rank ako passer
     test r13d, r13d
-    jz .rook_next               ; len cierna veza
+    jz .rook_next_entry         ; len cierna veza
     lea rsi, [file_masks]
     mov rdi, [rsi + rbx*8]
     mov rax, [passed_b]         ; passed black bitmask
     and rax, rdi
-    jz .rook_next
-    bsf rcx, rax
+    jz .rook_next_entry
+    bsf rcx, rax                ; lokalny temp, neovplyvnuje index r9d
     mov edx, ecx
     shr edx, 3
     mov eax, r12d
     shr eax, 3
     cmp eax, edx
-    jle .rook_next              ; veza musi byt VYSSSIE (vacsi rank) ako passer
+    jle .rook_next_entry        ; veza musi byt VYSSSIE (vacsi rank) ako passer
     sub r15d, ROOK_BEHIND_PP
-.rook_next:
-    inc r12
-    cmp r12, 64
-    jl .rook_loop
+
+.rook_next_entry:
+    inc r9d
+    jmp .rook_entry_loop
+
+.rook_kind_done:
+    cmp r14d, 3
+    jne .rook_done
+    mov r14d, 9                 ; black rooks (piece index)
+    jmp .rook_kind_loop
+
+.rook_done:
 
     ; --- tempo bonus pre stranu na tahu ---
     lea rsi, [side]
