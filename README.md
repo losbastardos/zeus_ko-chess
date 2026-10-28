@@ -109,17 +109,6 @@ Poznámka: interné testovacie a debug workflow sú presunuté do lokálnej inte
 ## Licencia
 
 Tento projekt je licencovaný pod MIT licenciou. Detaily sú v súbore [LICENSE](LICENSE).
-
-## Odporúčané GitHub topics
-
-Pre lepšiu dohľadateľnosť repozitára nastav v GitHub UI napríklad tieto topics:
-- `chess-engine`
-- `nasm`
-- `assembly`
-- `x86-64`
-- `uci`
-- `nnue`
-
 ---
 
 Copyright (c) 2026 Marek Suchy <marek.suchy@gmail.com>.
