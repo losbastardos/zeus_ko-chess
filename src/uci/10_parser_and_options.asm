@@ -979,17 +979,56 @@ uci_alloc_time:
     jnz .alloc_store
     mov rax, 50
 .alloc_store:
+    ; raw time available for this move before any extra headroom
+    mov r8, rax
+
     ; odcitaj move overhead od soft/hard limitu
     mov r9d, [uci_move_overhead]
     sub rax, r9
     jg .soft_ok
     mov rax, 10
 .soft_ok:
-    mov [search_limits + 56], rax        ; soft = base - overhead
-    mov rcx, rax
-    shr rcx, 1
-    add rcx, rax
-    mov [search_limits + 64], rcx        ; hard = base + base/2
+    ; phase-aware budget: v low-material endgames trochu zmensime slack,
+    ; aby sme neprekrocili skutocny cas pri poslednom tahu.
+    xor r10d, r10d
+    lea r11, [rel board]
+    mov ecx, 64
+.phase_loop:
+    movzx r9d, byte [r11 + rcx - 1]
+    test r9d, r9d
+    jz .phase_next
+    and r9d, 7
+    cmp r9d, 1
+    je .phase_next
+    cmp r9d, 6
+    je .phase_next
+    inc r10d
+.phase_next:
+    dec ecx
+    jnz .phase_loop
+    cmp r10d, 6
+    jg .phase_done
+    imul rax, 90
+    mov rcx, 100
+    xor rdx, rdx
+    div rcx
+.phase_done:
+    mov [search_limits + 56], rax        ; soft = adjusted per-phase budget
+
+    ; hard cap: 1.5 * soft je povolene len dovtedy, kym nezvysime dostupny cas
+    ; na tento tah. Inak pri movestogo=1/poslednom ťahu sa hard limit preleje cez
+    ; zostatok casu a spustane otocene time-lossy.
+    mov r9, rax
+    imul r9, 3
+    mov rcx, 2
+    xor rdx, rdx
+    mov rax, r9
+    div rcx
+    cmp rax, r8
+    jle .hard_store
+    mov rax, r8
+.hard_store:
+    mov [search_limits + 64], rax        ; hard = min(soft*1.5, available_time)
     ret
 
 ; ============================================================
