@@ -161,8 +161,16 @@ nnue_load:
 %define NNUE2_MAXH 256
 
 section .bss
-nnue2_buf:   resb 150000
+; V2 buffer: max H=256 → 20 + 4H + 2*768*H + 4 + 2H = 24 + 2054H ≤ 526 168.
+; Loader validuje presnu ocakavanu velkost voci H z hlavicky (fix 2026-11-02:
+; drive sa H=128 net (197 400 B) ticho truncatol na 150 000 B a EM2 vracal
+; garbage namiesto fallbacku).
+NNUE2_BUFSIZE equ 530000
+nnue2_buf:   resb NNUE2_BUFSIZE
 nnue2_ready: resb 1
+nnue2_avx2_ok: resb 1
+; Scratch pre relu aktivacie v AVX2 path, max H=256 byte.
+nnue2_relu_tmp: resb 256
 ; Perzistentny akumulator (E10/F2): acc[perspektiva 0/1][j] int32,
 ; perspektiva = strana, z ktorej pohladu su featury (0 = biela, 1 = cierna).
 ; nnue_acc_hash = position_hash pozicie, pre ktoru je acc platny
@@ -184,7 +192,7 @@ global nnue2_load, nnue2_eval
 global nnue2_feature_idx, nnue2_refresh
 global nnue2_halfkp_idx, nnue2_halfkp_collect
 global nnue2_move_delta, nnue2_move_delta_inv
-global nnue2_fwd
+global nnue2_fwd, nnue2_avx2_probe
 extern board, side, position_hash, moved_piece, captured_piece, promo_pieces
 
 ; ============================================================
@@ -204,13 +212,13 @@ nnue2_load:
     mov rax, SYS_READ
     mov rdi, r12
     lea rsi, [nnue2_buf]
-    mov rdx, 150000
+    mov rdx, NNUE2_BUFSIZE
     syscall
     mov rbx, rax                 ; nacitane
     mov rax, SYS_CLOSE
     mov rdi, r12
     syscall
-    cmp rbx, 148000              ; minimalna velkost (H=96)
+    cmp rbx, 20                  ; minimalne hlavicka
     jl .fail
     cmp dword [nnue2_buf], NNUE_MAGIC
     jne .fail
@@ -218,10 +226,22 @@ nnue2_load:
     jne .fail
     mov eax, dword [nnue2_buf + 8]
     mov [nnue2_H], eax
+    ; validacia velkosti voci H: expected = 24 + 1542*H
+    ; (W1 768*H i16 = 1536H, b1 4H int32, W2 2H i16). Prilis maly subor =
+    ; truncatovany/corruptny net.
+    test eax, eax
+    jz .fail
+    cmp eax, 256                 ; relu_tmp/acc limit
+    ja .fail
+    imul eax, eax, 1542
+    add eax, 24
+    cmp rbx, rax
+    jl .fail
     mov eax, dword [nnue2_buf + 12]
     mov [nnue2_shift1], eax
     mov eax, dword [nnue2_buf + 16]
     mov [nnue2_shift2], eax
+    call nnue2_avx2_probe
     mov byte [nnue2_ready], 1
     xor eax, eax
     pop r12
@@ -231,6 +251,30 @@ nnue2_load:
     mov eax, 1
     pop r12
     pop rbx
+    ret
+
+; ============================================================
+; nnue2_avx2_probe - zisti, ci je CPU AVX2-ready a ulozi flag
+; Vystup:  [nnue2_avx2_ok] = 1/0
+; ============================================================
+nnue2_avx2_probe:
+    mov byte [nnue2_avx2_ok], 0
+    mov eax, 7
+    xor ecx, ecx
+    cpuid
+    test ebx, 1 << 5             ; AVX2 bit in EBX (leaf 7 subleaf 0)
+    jz .ret
+    mov eax, 1
+    cpuid
+    test ecx, 1 << 27            ; OSXSAVE
+    jz .ret
+    xor ecx, ecx
+    xgetbv
+    and eax, 6
+    cmp eax, 6
+    jne .ret
+    mov byte [nnue2_avx2_ok], 1
+.ret:
     ret
 
 ; ============================================================
@@ -712,6 +756,86 @@ nnue2_fwd:
     shl ebx, 1
     lea rdi, [r14 + rbx]         ; b2q (int32)
     mov ebx, dword [rdi]         ; sum = b2q
+
+    ; AVX2 fast-path: spusti sa len raz po load-probe a len pre H >= 8.
+    cmp byte [nnue2_avx2_ok], 1
+    jne .scalar_start
+    cmp r15d, 8
+    jl .scalar_start
+
+    ; vyplnime scratch aktivacie (relu) a rozdelime na 8-lane AVX2 bloky
+    mov ecx, [nnue2_shift1]
+    lea r12, [nnue2_relu_tmp]
+    xor r11d, r11d
+.relu_fill:
+    cmp r11d, r15d
+    jae .avx2_block
+    mov eax, dword [r13 + r11*4]
+    sar eax, cl
+    jns .relu_check_hi
+    xor eax, eax
+.relu_check_hi:
+    cmp eax, 255
+    jle .relu_store
+    mov eax, 255
+.relu_store:
+    mov byte [r12 + r11], al
+    inc r11d
+    jmp .relu_fill
+
+.avx2_block:
+    vpxor ymm3, ymm3, ymm3
+    xor r11d, r11d
+.avx2_loop:
+    mov eax, r11d
+    add eax, 8
+    cmp eax, r15d
+    jg .avx2_tail
+    vmovq xmm0, qword [nnue2_relu_tmp + r11]
+    vpmovsxbd ymm0, xmm0
+    vmovdqu xmm1, [rsi + r11*2]
+    vpmovsxwd ymm1, xmm1
+    vpmulld ymm2, ymm0, ymm1
+    vpaddd ymm3, ymm3, ymm2
+    add r11d, 8
+    jmp .avx2_loop
+
+.avx2_tail:
+    cmp r11d, r15d
+    jae .avx2_reduce
+    mov r12d, r11d
+.avx2_tail_loop:
+    cmp r12d, r15d
+    jae .avx2_reduce
+    mov eax, dword [r13 + r12*4]
+    mov ecx, [nnue2_shift1]
+    sar eax, cl
+    jns .avx2_tail_check_hi
+    xor eax, eax
+.avx2_tail_check_hi:
+    cmp eax, 255
+    jle .avx2_tail_store
+    mov eax, 255
+.avx2_tail_store:
+    movsx edx, word [rsi + r12*2]
+    imul eax, edx
+    add ebx, eax
+    inc r12d
+    jmp .avx2_tail_loop
+
+.avx2_reduce:
+    vextracti128 xmm1, ymm3, 1
+    vpaddd xmm0, xmm3, xmm1
+    vpshufd xmm1, xmm0, 0x4e
+    vpaddd xmm0, xmm0, xmm1
+    vpshufd xmm1, xmm0, 0x11
+    vpaddd xmm0, xmm0, xmm1
+    vmovd eax, xmm0
+    add ebx, eax
+    vzeroupper
+    jmp .finish
+
+.scalar_start:
     mov ecx, [nnue2_shift1]
     xor r12, r12                 ; j
 .out_loop:
