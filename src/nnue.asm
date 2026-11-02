@@ -26,6 +26,14 @@ DEFAULT REL
 %define NNUE_MAGIC    0x45554e4e   ; "NNUE" little-endian
 %define NNUE_VERSION  1
 %define NNUE_FILESIZE (8 + 4*6*64*2)
+; v3 (HalfKP) konstanty — syscall/mmap cisla ako v tt.asm/tb.asm
+%define NNUE3_F       40960        ; 2*64*5*64 king-rel featury
+%define NNUE3_MAXH    512          ; acc buffer limit (stack 2 KB)
+%define SYS_MMAP      9
+%define SYS_MUNMAP    11
+%define SYS_LSEEK     8
+%define PROT_READ     1
+%define MAP_PRIVATE   2
 
 
 section .bss
@@ -171,6 +179,15 @@ nnue2_ready: resb 1
 nnue2_avx2_ok: resb 1
 ; Scratch pre relu aktivacie v AVX2 path, max H=256 byte.
 nnue2_relu_tmp: resb 256
+; --- NNUE v3 (HalfKP) ---
+; Net sa cely mmapuje (20 MB pre H=256); forward robi plny recompute
+; (bez inkrementalneho acc — ~15k MACov/eval, lacnejsie nez classic).
+nnue3_base:      resq 1
+nnue3_size:      resq 1
+nnue3_H:         resd 1
+nnue3_shift_acc: resd 1
+nnue3_shift_out: resd 1
+nnue3_ready:     resb 1
 ; Perzistentny akumulator (E10/F2): acc[perspektiva 0/1][j] int32,
 ; perspektiva = strana, z ktorej pohladu su featury (0 = biela, 1 = cierna).
 ; nnue_acc_hash = position_hash pozicie, pre ktoru je acc platny
@@ -193,6 +210,7 @@ global nnue2_feature_idx, nnue2_refresh
 global nnue2_halfkp_idx, nnue2_halfkp_collect
 global nnue2_move_delta, nnue2_move_delta_inv
 global nnue2_fwd, nnue2_avx2_probe
+global nnue3_load, nnue3_eval, nnue3_ready
 extern board, side, position_hash, moved_piece, captured_piece, promo_pieces
 
 ; ============================================================
@@ -249,6 +267,299 @@ nnue2_load:
     ret
 .fail:
     mov eax, 1
+    pop r12
+    pop rbx
+    ret
+
+; ============================================================
+; nnue3_load - nacita net v3 (HalfKP) cez mmap
+; Format (nnue_train3_halfkp.export_v3): 8x u32
+;   [magic, ver=3, arch, flags, F, H, shift_acc, shift_out],
+;   potom b1s[H] i16, b1o[H] i16, W1s[F*H] i8, W1o[F*H] i8,
+;   b2 i32, W2s[H] i16, W2o[H] i16.
+; Velkost = 36 + 8H + 2*F*H  (H=256, F=40960 -> 20 973 604 B)
+; Vstup:  rdi = cesta
+; Vystup: eax = 0 OK, 1 chyba alebo nie je to v3 subor (v2/v1 zostavaju
+;         na nnue2_load/nnue_load; kazdy loader si overi verziu sám)
+; ============================================================
+nnue3_load:
+    push rbx
+    push r12
+    push r13
+    ; re-load: uvolni stare mapovanie
+    cmp byte [nnue3_ready], 1
+    jne .open
+    mov rax, SYS_MUNMAP
+    mov rdi, [nnue3_base]
+    mov rsi, [nnue3_size]
+    syscall
+    mov byte [nnue3_ready], 0
+.open:
+    mov rax, SYS_OPEN
+    xor esi, esi                 ; O_RDONLY
+    xor edx, edx
+    syscall
+    test rax, rax
+    js .fail
+    mov r12, rax                 ; fd
+    ; hlavicka 32 B do stacku
+    sub rsp, 40
+    mov rax, SYS_READ
+    mov rdi, r12
+    mov rsi, rsp
+    mov rdx, 32
+    syscall
+    cmp rax, 32
+    jne .fail_stack
+    cmp dword [rsp], NNUE_MAGIC
+    jne .fail_stack
+    cmp dword [rsp + 4], 3       ; verzia 3 = HalfKP
+    jne .fail_stack
+    cmp dword [rsp + 16], NNUE3_F
+    jne .fail_stack
+    mov r13d, dword [rsp + 20]   ; H
+    test r13d, r13d
+    jz .fail_stack
+    cmp r13d, NNUE3_MAXH
+    ja .fail_stack
+    ; ocakavana velkost = 36 + 8H + 2*F*H = 36 + 81928*H
+    mov rax, r13
+    imul rax, rax, 81928
+    add rax, 36
+    mov rbx, rax                 ; expected
+    mov rax, SYS_LSEEK
+    mov rdi, r12
+    xor esi, esi
+    mov edx, 2                   ; SEEK_END
+    syscall
+    test rax, rax
+    js .fail_stack
+    cmp rax, rbx
+    jne .fail_stack              ; nesedí velkost = corruptny net
+    ; mmap celeho suboru
+    mov rax, SYS_MMAP
+    xor edi, edi
+    mov rsi, rbx
+    mov edx, PROT_READ
+    mov r10d, MAP_PRIVATE
+    mov r8, r12
+    xor r9d, r9d
+    syscall
+    test rax, rax
+    js .fail_stack
+    mov [nnue3_base], rax
+    mov [nnue3_size], rbx
+    mov [nnue3_H], r13d
+    mov eax, dword [rsp + 24]
+    mov [nnue3_shift_acc], eax
+    mov eax, dword [rsp + 28]
+    mov [nnue3_shift_out], eax
+    add rsp, 40
+    mov rax, SYS_CLOSE
+    mov rdi, r12
+    syscall
+    mov byte [nnue3_ready], 1
+    xor eax, eax
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.fail_stack:
+    add rsp, 40
+    mov rax, SYS_CLOSE
+    mov rdi, r12
+    syscall
+.fail:
+    mov eax, 1
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; ============================================================
+; nnue3_eval - forward pass HalfKP siete (plny recompute)
+; Dva akumulatory: acc_s z perspektivy strany na tahu (b1s + sum W1s[idx]),
+; acc_o z perspektivy supera (b1o + sum W1o[idx]); idx pocita
+; nnue2_halfkp_collect (rovnaky indexator ako dump/equivalence testy).
+; Vystup: eax = skore z pohladu strany na tahu (STM) — rovnaky kontrakt
+; ako nnue2_eval (evaluate ho neguje pre cierneho).
+; Stack: 256 B idx buffer + 2 KB acc buffer (NNUE3_MAXH dword).
+; ============================================================
+nnue3_eval:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 2048 + 256
+    ; [rsp+0..255]    = idx buffer
+    ; [rsp+256..2303] = acc buffer (H dword)
+    ; r13d = H, r12 = F*H (bajty), r14 = base, rbx = total, r15 = scratch ptr
+    mov r13d, [nnue3_H]
+    mov r14, [nnue3_base]
+    mov eax, NNUE3_F
+    mov r12, rax
+    imul r12, r13                ; F*H (i8 riadky, bajty)
+    ; total = b2 = *(base + 32 + 4H + 2*(F*H))
+    mov rax, r13
+    shl rax, 2                   ; 4H
+    lea r15, [r14 + 32]
+    add r15, rax
+    add r15, r12
+    add r15, r12                 ; &b2
+    mov ebx, dword [r15]
+    ; ---- faza S: perspektiva = side, W1s base = base + 32 + 4H ----
+    movzx edx, byte [side]
+    mov rdi, rsp
+    call nnue2_halfkp_collect    ; eax = count
+    mov r15d, eax                ; count
+    ; acc = b1s (base+32) — i16[H], movsx do i32 acc
+    lea rsi, [r14 + 32]
+    lea rdi, [rsp + 256]
+    mov ecx, r13d
+.copy_s:
+    movsx eax, word [rsi]
+    mov dword [rdi], eax
+    add rsi, 2
+    add rdi, 4
+    dec ecx
+    jnz .copy_s
+    xor r11d, r11d               ; i
+.rows_s:
+    cmp r11d, r15d
+    jae .relu_s
+    mov eax, dword [rsp + r11*4] ; idx
+    imul rax, r13                ; idx*H (i8 riadky)
+    lea rsi, [r14 + 32]
+    mov rcx, r13
+    shl rcx, 2
+    add rsi, rcx                 ; W1s base = base+32+4H
+    add rsi, rax
+    lea rdi, [rsp + 256]
+    xor edx, edx
+.mac_s:
+    cmp edx, r13d
+    jae .mac_s_done
+    movsx eax, byte [rsi + rdx]
+    add dword [rdi + rdx*4], eax
+    inc edx
+    jmp .mac_s
+.mac_s_done:
+    inc r11d
+    jmp .rows_s
+.relu_s:
+    mov ecx, [nnue3_shift_acc]
+    ; W2s = b2 + 4
+    mov rax, r13
+    shl rax, 2
+    lea r15, [r14 + 32]
+    add r15, rax
+    add r15, r12
+    add r15, r12
+    add r15, 4                   ; &W2s
+    lea rdi, [rsp + 256]
+    xor edx, edx
+.out_s:
+    cmp edx, r13d
+    jae .phase_o
+    mov eax, dword [rdi + rdx*4]
+    sar eax, cl
+    jns .s_hi
+    xor eax, eax
+.s_hi:
+    cmp eax, 255
+    jle .s_mul
+    mov eax, 255
+.s_mul:
+    movsx r8d, word [r15 + rdx*2]
+    imul eax, r8d
+    add ebx, eax
+    inc edx
+    jmp .out_s
+    ; ---- faza O: perspektiva = 1 - side, b1o = base+32+2H, W1o = W1s + F*H ----
+.phase_o:
+    movzx edx, byte [side]
+    xor edx, 1
+    mov rdi, rsp
+    call nnue2_halfkp_collect
+    mov r15d, eax
+    mov rax, r13
+    shl rax, 1                   ; 2H
+    lea rsi, [r14 + 32]
+    add rsi, rax                 ; &b1o (i16[H])
+    lea rdi, [rsp + 256]
+    mov ecx, r13d
+.copy_o:
+    movsx eax, word [rsi]
+    mov dword [rdi], eax
+    add rsi, 2
+    add rdi, 4
+    dec ecx
+    jnz .copy_o
+    xor r11d, r11d
+.rows_o:
+    cmp r11d, r15d
+    jae .relu_o
+    mov eax, dword [rsp + r11*4]
+    imul rax, r13
+    mov rcx, r13
+    shl rcx, 2
+    lea rsi, [r14 + 32]
+    add rsi, rcx
+    add rsi, r12                 ; W1o base = W1s + F*H
+    add rsi, rax
+    lea rdi, [rsp + 256]
+    xor edx, edx
+.mac_o:
+    cmp edx, r13d
+    jae .mac_o_done
+    movsx eax, byte [rsi + rdx]
+    add dword [rdi + rdx*4], eax
+    inc edx
+    jmp .mac_o
+.mac_o_done:
+    inc r11d
+    jmp .rows_o
+.relu_o:
+    mov ecx, [nnue3_shift_acc]
+    ; W2o = W2s + 2H
+    mov rax, r13
+    shl rax, 2
+    lea r15, [r14 + 32]
+    add r15, rax
+    add r15, r12
+    add r15, r12
+    add r15, 4
+    mov rax, r13
+    shl rax, 1
+    add r15, rax                 ; &W2o
+    lea rdi, [rsp + 256]
+    xor edx, edx
+.out_o:
+    cmp edx, r13d
+    jae .done
+    mov eax, dword [rdi + rdx*4]
+    sar eax, cl
+    jns .o_hi
+    xor eax, eax
+.o_hi:
+    cmp eax, 255
+    jle .o_mul
+    mov eax, 255
+.o_mul:
+    movsx r8d, word [r15 + rdx*2]
+    imul eax, r8d
+    add ebx, eax
+    inc edx
+    jmp .out_o
+.done:
+    mov ecx, [nnue3_shift_out]
+    mov eax, ebx
+    sar eax, cl
+    add rsp, 2048 + 256
+    pop r15
+    pop r14
+    pop r13
     pop r12
     pop rbx
     ret

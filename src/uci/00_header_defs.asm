@@ -321,6 +321,7 @@ extern eval_dbg_lp_lists_base, eval_dbg_lp_counts_base, eval_dbg_lp_counts, eval
 extern eval_mode
 extern nnue_load
 extern nnue2_load
+extern nnue3_load
 extern nnue2_eval, nnue2_refresh
 extern nnue2_fwd
 extern nnue2_halfkp_collect

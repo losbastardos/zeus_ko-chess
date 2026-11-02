@@ -271,7 +271,7 @@ extern move_buf, move_buf_len, move_count, side, board_flip, perft_depth, halfmo
 extern gfx_active_backend
 extern lang_is_en
 extern uci_own_book, uci_stop_flag, uci_ponder, uci_hash_size, uci_move_overhead, uci_syzygy_probe_depth, uci_threads
-extern tt_init, pst_init, book_pick_move, nnue_load, nnue2_load, nnue2_refresh, nnue2_ready
+extern tt_init, pst_init, book_pick_move, nnue_load, nnue2_load, nnue2_refresh, nnue2_ready, nnue3_load
 extern parse_fen_string, uci_now_ms
 extern nodes_searched
 extern suite_cmd_text, suite_snapshot_save, suite_snapshot_restore
@@ -1087,7 +1087,10 @@ _start:
     call nnue_load
     jmp .load_done
 .load_v2:
-    call nnue2_load
+    call nnue3_load              ; v3 HalfKP (mmap); fail ak nie je ver=3
+    test eax, eax
+    jz .load_done
+    call nnue2_load              ; fallback v2
 .load_done:
     test eax, eax
     jz .eval_done

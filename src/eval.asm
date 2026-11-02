@@ -161,6 +161,7 @@ section .text
 extern board
 extern side, eval_mode, fullmove
 extern nnue2_eval, nnue2_ready
+extern nnue3_eval, nnue3_ready
 extern prof_evals
 extern moved_piece, captured_piece, promo_pieces
 extern bb_pieces, bb_side, bb_occ
@@ -402,13 +403,19 @@ evaluate:
     push rsi
     push rdi
 
-    ; NNUE faza 2: priama evaluacia 1-skrytou-vrstvou sietou
+    ; NNUE: priama evaluacia neuronkou (v3 HalfKP ak je mmapnuta, inak v2)
     cmp byte [eval_mode], 2
     jne .classic_eval
+    cmp byte [nnue3_ready], 1
+    je .call_nnue3
     cmp byte [nnue2_ready], 1
     jne .classic_eval
     call nnue2_eval
-    ; nnue2_eval vracia skore z pohladu strany na tahu (STM),
+    jmp .nnue_have_stm
+.call_nnue3:
+    call nnue3_eval
+.nnue_have_stm:
+    ; nnue*_eval vracia skore z pohladu strany na tahu (STM),
     ; evaluate vsak drzi kontrakt skore z pohladu bieleho.
     movzx ecx, byte [side]
     test ecx, ecx

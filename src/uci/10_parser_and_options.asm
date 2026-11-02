@@ -845,7 +845,10 @@ uci_setoption:
     call nnue_load
     jmp .evalmode_load_done
 .evalmode_load_v2:
-    call nnue2_load
+    call nnue3_load              ; v3 HalfKP (mmap); fail ak nie je ver=3
+    test eax, eax
+    jz .evalmode_load_done
+    call nnue2_load              ; fallback v2
 .evalmode_load_done:
     test eax, eax
     jnz .evalmode_load_fail
