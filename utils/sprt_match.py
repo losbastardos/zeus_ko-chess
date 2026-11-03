@@ -38,6 +38,8 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
     if args.new_eval_mode is not None:
         cmd += [f"option.EvalMode={args.new_eval_mode}"]
 
+    cmd += [f"option.MoveOverhead={args.move_overhead}"]
+
     cmd += [
         "-engine",
         f"name=BASE",
@@ -49,6 +51,8 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
     ]
     if args.base_eval_mode is not None:
         cmd += [f"option.EvalMode={args.base_eval_mode}"]
+
+    cmd += [f"option.MoveOverhead={args.move_overhead}"]
 
     cmd += ["-each", "proto=uci", f"tc={args.tc}"]
     cmd += ["-concurrency", str(args.concurrency)]
@@ -71,6 +75,14 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
 
     if args.sprt:
         cmd += ["-sprt"] + shlex.split(args.sprt)
+
+    if args.adjudicate:
+        # resign/draw adjudikacia: zabranuje dlhym beznadejnym koncovkam,
+        # kde engine pri mate-search hlbky 60+ zriedka zavesi (hang hlada
+        # sa v backlogue; FEN 8/8/6k1/8/8/3b4/1q6/3K4 v SESSION_LOG).
+        cmd += shlex.split(
+            "-resign movecount=4 score=600 "
+            "-draw movenumber=20 movecount=4 score=20")
 
     if args.pgnout:
         cmd += ["-pgnout", args.pgnout]
@@ -144,6 +156,12 @@ def parse_args() -> argparse.Namespace:
         help="fixed cutechess RNG seed for reproducible runs",
     )
     parser.add_argument("--pgnout", default="", help="optional output PGN path")
+    parser.add_argument("--adjudicate", action="store_true", default=True,
+                        help="enable resign/draw adjudication (default on; "
+                             "guards against rare deep mate-search hangs)")
+    parser.add_argument("--move-overhead", type=int, default=100,
+                        help="MoveOverhead ms for both engines (raise to 300-500 "
+                             "on shared/oversubscribed hosts to avoid time forfeits)")
     parser.add_argument("--dry-run", action="store_true", help="print command and exit")
     args = parser.parse_args()
 
