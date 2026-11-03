@@ -1612,15 +1612,21 @@ pst_init:
 .sq_loop:
     cmp r13, 64
     jae .next_piece
+    ; FIX 2026-11-03: pst_tune.inc tabulky su v CPW konvencii rank-8-first,
+    ; engine indexuje a1=0 — bez flipu sa citali vertikalne preklopene
+    ; (2 mesiace kalibrovania tuningov okolo flipu). Zdroj indexujeme
+    ; rank-flipnuty (xor 56); file poradie ostava.
+    mov r11, r13
+    xor r11, 56
     ; MG
-    movsx eax, byte [rbx + r13]
+    movsx eax, byte [rbx + r11]
     imul eax, r8d
     sar eax, 6
     mov [rdi + r13], al
     mov rdx, [rsp + 8]      ; mg enemy dst
     mov [rdx + r13], al
     ; EG
-    movsx eax, byte [rcx + r13]
+    movsx eax, byte [rcx + r11]
     imul eax, r9d
     sar eax, 6
     mov [rsi + r13], al
