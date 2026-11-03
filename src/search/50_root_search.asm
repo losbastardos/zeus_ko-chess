@@ -460,91 +460,16 @@ search_best_move:
     jg .take_new
 
     ; tie-break pri rovnakom score:
-    ; ak aktualny best je skory manualny tah domacim kralom/vezou
-    ; a novy tah nie je, preferuj novy tah.
-    xor edx, edx                    ; edx = curr_bad_opening_move
+    ; v otvoreni nepreferuj manualne tahy domacim kralom/vezou,
+    ; ak uz best tah je takejto povahy a novy tah nie je.
     movzx r8d, word [rsp + rcx*2]
-    mov r9d, r8d
-    shr r9d, 12
-    cmp r9d, FLAG_CASTLE
-    je .tb_curr_done
-    mov r9d, r8d
-    and r9d, 0x3F
-    cmp r9d, 4
-    je .tb_curr_sq_ok
-    cmp r9d, 60
-    jne .tb_curr_rook
-.tb_curr_sq_ok:
-    lea r11, [board]
-    movzx r10d, byte [r11 + r9]
-    and r10d, PIECE_MASK
-    cmp r10d, KING
-    jne .tb_curr_rook
-    mov edx, 1
-.tb_curr_rook:
-    mov r9d, r8d
-    and r9d, 0x3F
-    cmp r9d, 0
-    je .tb_curr_rook_sq
-    cmp r9d, 7
-    je .tb_curr_rook_sq
-    cmp r9d, 56
-    je .tb_curr_rook_sq
-    cmp r9d, 63
-    jne .tb_curr_done
-.tb_curr_rook_sq:
-    lea r11, [board]
-    movzx r10d, byte [r11 + r9]
-    and r10d, PIECE_MASK
-    cmp r10d, ROOK
-    jne .tb_curr_done
-    movzx r10d, word [fullmove]
-    cmp r10d, 12
-    ja .tb_curr_done
-    mov edx, 1
-.tb_curr_done:
-
-    xor esi, esi                    ; esi = best_bad_opening_move
+    mov edi, r8d
+    call is_home_opening_move
+    mov edx, eax
     movzx r8d, r14w
-    mov r9d, r8d
-    shr r9d, 12
-    cmp r9d, FLAG_CASTLE
-    je .tb_best_done
-    mov r9d, r8d
-    and r9d, 0x3F
-    cmp r9d, 4
-    je .tb_best_sq_ok
-    cmp r9d, 60
-    jne .tb_best_rook
-.tb_best_sq_ok:
-    lea r11, [board]
-    movzx r10d, byte [r11 + r9]
-    and r10d, PIECE_MASK
-    cmp r10d, KING
-    jne .tb_best_rook
-    mov esi, 1
-.tb_best_rook:
-    mov r9d, r8d
-    and r9d, 0x3F
-    cmp r9d, 0
-    je .tb_best_rook_sq
-    cmp r9d, 7
-    je .tb_best_rook_sq
-    cmp r9d, 56
-    je .tb_best_rook_sq
-    cmp r9d, 63
-    jne .tb_best_done
-.tb_best_rook_sq:
-    lea r11, [board]
-    movzx r10d, byte [r11 + r9]
-    and r10d, PIECE_MASK
-    cmp r10d, ROOK
-    jne .tb_best_done
-    movzx r10d, word [fullmove]
-    cmp r10d, 12
-    ja .tb_best_done
-    mov esi, 1
-.tb_best_done:
+    mov edi, r8d
+    call is_home_opening_move
+    mov esi, eax
 
     cmp esi, 1
     jne .next                       ; best nie je home-king -> ponechaj best
@@ -618,6 +543,63 @@ search_best_move:
     pop r12
     pop rbx
     pop rbp
+    ret
+
+; vrati 1, ak je tah manualny home-king/home-rook tah v ranom otvoreni
+; (pre tie-break pri rovnakom root score)
+is_home_opening_move:
+    push rbx
+    push r12
+    mov r12d, edi
+    mov r9d, edi
+    shr r9d, 12
+    cmp r9d, FLAG_CASTLE
+    je .not_home
+
+    mov r9d, edi
+    and r9d, 0x3F
+    cmp r9d, 4
+    je .check_king
+    cmp r9d, 60
+    jne .check_rook
+
+.check_king:
+    lea r11, [board]
+    movzx r10d, byte [r11 + r9]
+    and r10d, PIECE_MASK
+    cmp r10d, KING
+    jne .check_rook
+    mov eax, 1
+    jmp .done
+
+.check_rook:
+    cmp r9d, 0
+    je .rook_sq
+    cmp r9d, 7
+    je .rook_sq
+    cmp r9d, 56
+    je .rook_sq
+    cmp r9d, 63
+    jne .not_home
+
+.rook_sq:
+    lea r11, [board]
+    movzx r10d, byte [r11 + r9]
+    and r10d, PIECE_MASK
+    cmp r10d, ROOK
+    jne .not_home
+    movzx r10d, word [fullmove]
+    cmp r10d, 12
+    ja .not_home
+    mov eax, 1
+    jmp .done
+
+.not_home:
+    xor eax, eax
+
+.done:
+    pop r12
+    pop rbx
     ret
 
 ; ============================================================
