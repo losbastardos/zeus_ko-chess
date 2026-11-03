@@ -9,12 +9,12 @@ ISOLATED_PEN   equ 15
 PASSED_BASE    equ 11
 PASSED_STEP    equ 25
 CONNECTED_PP_BASE equ 8
-CONNECTED_PP_STEP equ 2
+CONNECTED_PP_STEP equ 1
 ROOK_OPEN      equ 25
 ROOK_SEMI      equ 12
-ROOK_SEVENTH   equ 20
+ROOK_SEVENTH   equ 25
 ROOK_BEHIND_PP equ 18    ; veza za prekonajucim pesiakom
-TEMPO_BONUS    equ 22
+TEMPO_BONUS    equ 28
 
 ; mobility: bonus za dosiahnutelne policko (N/B/R/Q), MG/EG
 ; indexy: 0=prazdne,1=pesiak,2=jazdec,3=strelec,4=veza,5=dama,6=kral
@@ -44,7 +44,7 @@ OUTPOST_C_MG   equ 25
 OUTPOST_C_EG   equ 10
 
 ; strelec na outposte (iba MG), konzervativne
-B_OUTPOST_MG     equ 10
+B_OUTPOST_MG     equ 12
 B_OUTPOST_EG     equ 0
 B_OUTPOST_C_MG   equ 15
 B_OUTPOST_C_EG   equ 0
