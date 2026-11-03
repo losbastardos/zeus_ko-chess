@@ -1150,18 +1150,27 @@ global hash_delta_pieces, hash_delta_state
 extern moved_piece, captured_piece, promo_pieces
 
 ; ------------------------------------------------------------
-; hash_xor_piece - XOR zobrist kluca figurky do position_hash
+; hash_xor_piece - XOR Zobrist kľúča figúrky do position_hash
 ; Vstup: ecx = piece bajt, esi = sq
 ; Clobbers: rax, rdx, rdi
 ; ------------------------------------------------------------
 hash_xor_piece:
+    ; Ochrana pred deep-search / zastaranými priechodmi tahu: nikdy nesmú
+    ; indexovať za hranice Zobrist tabuľky. Neplatné pole alebo figúrka sa
+    ; spracujú ako no-op namiesto pádu enginu.
+    cmp esi, 63
+    ja .invalid
     mov eax, ecx
     and eax, 0xF
+    cmp eax, 15
+    ja .invalid
     shl eax, 6
     add eax, esi
     lea rdi, [zobrist_keys]
     mov rdx, [rdi + rax*8]
     xor [position_hash], rdx
+    ret
+.invalid:
     ret
 
 ; ------------------------------------------------------------
