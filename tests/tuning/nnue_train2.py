@@ -77,8 +77,8 @@ def parse_args() -> argparse.Namespace:
                    help="PASS threshold for mse/variance ratio")
     p.add_argument("--gate-warn", type=float, default=0.50,
                    help="WARN upper threshold for mse/variance ratio")
-    p.add_argument("--fail-fast-ratio", type=float, default=1.0,
-                   help="early fail if epoch-1 val mse/variance exceeds this threshold (0=off)")
+    p.add_argument("--fail-fast-ratio", type=float, default=1.3,
+                   help="early fail if epoch-1 val mse/variance exceeds this threshold (0=off, 1.3 avoids false-fail on warm-up)")
     p.add_argument("--target", choices=["result", "cp"], default="result",
                    help="result=logloss na game result, cp=MSE na eval_cp")
     p.add_argument("--cp-clip", type=float, default=2000.0,
@@ -282,8 +282,13 @@ def main() -> int:
                 stale_epochs += 1
         if epoch == 0 or (epoch + 1) % 5 == 0:
             name = "mse_cp" if args.target == "cp" else "logloss"
+            ratio_epoch = float("nan")
             if n_valid > 0:
-                print(f"epoch {epoch+1}: train_{name}={metric:.5f} val_{name}={val_metric:.5f}", flush=True)
+                var_epoch = float(np.var(y[valid_idx], ddof=0))
+                if var_epoch > 0:
+                    ratio_epoch = val_metric / var_epoch
+                w1_absmax = float(np.abs(W1).max()) if W1.size > 0 else 0.0
+                print(f"epoch {epoch+1}: train_{name}={metric:.5f} val_{name}={val_metric:.5f} val_ratio={ratio_epoch:.6f} w1_absmax={w1_absmax:.6f}", flush=True)
             else:
                 print(f"epoch {epoch+1}: {name}={metric:.5f}", flush=True)
         if args.target == "cp" and n_valid > 0 and (epoch + 1) == 1 and args.fail_fast_ratio > 0.0:
