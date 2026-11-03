@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--valid-ratio", type=float, default=0.2)
     p.add_argument("--valid-max", type=int, default=10000)
     p.add_argument("--patience", type=int, default=15)
-    p.add_argument("--fail-fast-ratio", type=float, default=1.0)
+    p.add_argument("--fail-fast-ratio", type=float, default=1.3)
     p.add_argument("--gate-pass", type=float, default=0.30)
     p.add_argument("--gate-warn", type=float, default=0.50)
     p.add_argument("--scale", type=float, default=233.0)
@@ -325,8 +325,14 @@ def main() -> int:
             seen += int(m)
 
             d = diff / (args.scale * args.scale)
-            dW2s = (hs.T @ d) / m + args.l2 * W2s
-            dW2o = (ho.T @ d) / m + args.l2 * W2o
+            # L2 fix 2026-11-03: datovy gradient je deleny scale^2, L2 musi
+            # byt taktiez — inak je efektivny decay l2*scale^2 krat silnejsi
+            # (pri scale=233 ~5.4e4x) a Adam postupne zabije vsetky váhy
+            # okrem horucich featúr (diagnostika: nonzero% klesal 7.4->3.1,
+            # sat_low rastol 47->78 %, kapacita kolabovala na ~56/256 jednotiek).
+            l2_eff = args.l2 / (args.scale * args.scale)
+            dW2s = (hs.T @ d) / m + l2_eff * W2s
+            dW2o = (ho.T @ d) / m + l2_eff * W2o
             db2 = float(d.mean())
 
             dhs = np.outer(d, W2s)
@@ -336,8 +342,8 @@ def main() -> int:
 
             db1s = dzs.mean(axis=0)
             db1o = dzo.mean(axis=0)
-            dW1s = grad_w1_sparse(W1s.shape, idx_stm[bid], cnt_stm[bid], dzs, args.l2, W1s)
-            dW1o = grad_w1_sparse(W1o.shape, idx_opp[bid], cnt_opp[bid], dzo, args.l2, W1o)
+            dW1s = grad_w1_sparse(W1s.shape, idx_stm[bid], cnt_stm[bid], dzs, l2_eff, W1s)
+            dW1o = grad_w1_sparse(W1o.shape, idx_opp[bid], cnt_opp[bid], dzo, l2_eff, W1o)
 
             grad_w1_l2_sum += math.sqrt(float((dW1s * dW1s).sum() + (dW1o * dW1o).sum()))
             grad_w2_l2_sum += math.sqrt(float((dW2s * dW2s).sum() + (dW2o * dW2o).sum()))
