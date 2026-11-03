@@ -7,8 +7,8 @@
 ; ============================================================
 
 ; --- scale konstanty (64 = 100 %) ---
-PST_PAWN_MG_SCALE    equ 64
-PST_PAWN_EG_SCALE    equ 64
+PST_PAWN_MG_SCALE    equ 77
+PST_PAWN_EG_SCALE    equ 51
 PST_KNIGHT_MG_SCALE  equ 64
 PST_KNIGHT_EG_SCALE  equ 64
 PST_BISHOP_MG_SCALE  equ 64

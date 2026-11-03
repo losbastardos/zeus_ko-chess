@@ -34,8 +34,9 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
         f"option.Hash={args.hash_mb}",
         f"option.Threads={args.new_threads}",
         f"option.OwnBook={new_ownbook}",
-        f"option.EvalMode={args.new_eval_mode}",
     ]
+    if args.new_eval_mode is not None:
+        cmd += [f"option.EvalMode={args.new_eval_mode}"]
 
     cmd += [
         "-engine",
@@ -45,13 +46,16 @@ def build_cmd(args: argparse.Namespace) -> List[str]:
         f"option.Hash={args.hash_mb}",
         f"option.Threads={args.base_threads}",
         f"option.OwnBook={base_ownbook}",
-        f"option.EvalMode={args.base_eval_mode}",
     ]
+    if args.base_eval_mode is not None:
+        cmd += [f"option.EvalMode={args.base_eval_mode}"]
 
     cmd += ["-each", "proto=uci", f"tc={args.tc}"]
     cmd += ["-concurrency", str(args.concurrency)]
     cmd += ["-games", str(args.games)]
     cmd += ["-repeat"]
+    if args.allow_option_asymmetry:
+        cmd += ["-allow-option-asymmetry"]
     if args.srand is not None:
         cmd += ["-srand", str(args.srand)]
 
@@ -143,8 +147,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="print command and exit")
     args = parser.parse_args()
 
-    args.new_eval_mode = args.eval_mode if args.new_eval_mode is None else args.new_eval_mode
-    args.base_eval_mode = args.eval_mode if args.base_eval_mode is None else args.base_eval_mode
+    # EvalMode=None znamena: nenastavuj UCI option vobec — eval mode
+    # strany urcuje chess.ini v working directory enginu (wrapper cesta).
+    # (Povodna normalizacia None -> args.eval_mode tu nanucovala EvalMode=0
+    # obom stranam a znemoznovala ini-per-side variant.)
 
     ownbook_default = args.ownbook == "true"
     args.new_ownbook = ownbook_default if args.new_ownbook is None else (args.new_ownbook == "true")
@@ -168,13 +174,16 @@ def validate_inputs(args: argparse.Namespace) -> None:
         raise ValueError("--new-threads must be > 0")
     if args.base_threads <= 0:
         raise ValueError("--base-threads must be > 0")
-    if args.new_eval_mode < 0 or args.base_eval_mode < 0:
+    if (args.new_eval_mode is not None and args.new_eval_mode < 0) or \
+       (args.base_eval_mode is not None and args.base_eval_mode < 0):
         raise ValueError("EvalMode must be >= 0")
 
     if not args.allow_option_asymmetry:
         if args.new_threads != args.base_threads:
             raise ValueError("Option asymmetry: Threads differ (use --allow-option-asymmetry to override)")
-        if args.new_eval_mode != args.base_eval_mode:
+        if args.new_eval_mode is not None and \
+           args.base_eval_mode is not None and \
+           args.new_eval_mode != args.base_eval_mode:
             raise ValueError("Option asymmetry: EvalMode differs (use --allow-option-asymmetry to override)")
         if args.new_ownbook != args.base_ownbook:
             raise ValueError("Option asymmetry: OwnBook differs (use --allow-option-asymmetry to override)")
