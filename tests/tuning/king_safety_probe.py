@@ -111,9 +111,9 @@ def main() -> int:
             if (i + 1) % 25 == 0:
                 print(f"processed: {i + 1}/{len(labels)}")
     finally:
-        ref.close()
-        if test is not ref:
-            test.close()
+        if ref is not None:
+            ref.close()
+        test.close()
 
     mean_gap = sum(gaps) / len(gaps)
     med_gap = percentile_median(gaps)
