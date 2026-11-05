@@ -286,6 +286,7 @@ nnue3_load:
     push rbx
     push r12
     push r13
+    mov rbx, rdi                 ; cesta — munmap vetva nizsie clobbruje rdi
     ; re-load: uvolni stare mapovanie
     cmp byte [nnue3_ready], 1
     jne .open
@@ -296,6 +297,7 @@ nnue3_load:
     mov byte [nnue3_ready], 0
 .open:
     mov rax, SYS_OPEN
+    mov rdi, rbx                 ; cesta (rdi bolo prepisane v munmap vetve)
     xor esi, esi                 ; O_RDONLY
     xor edx, edx
     syscall
