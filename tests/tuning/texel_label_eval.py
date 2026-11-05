@@ -22,7 +22,8 @@ class Engine:
     score_scale: float = 10.0
 
     @classmethod
-    def start(cls, path: str, go: str, score_scale: float = 10.0) -> "Engine":
+    def start(cls, path: str, go: str, score_scale: float = 10.0,
+              pin_eval_mode: bool = True) -> "Engine":
         if not os.path.exists(path):
             raise FileNotFoundError(path)
 
@@ -51,7 +52,10 @@ class Engine:
         # Classic eval pinnuty nezavisle od chess.ini — po PST flip fixe
         # (2026-11-03) su vsetky stare self-labele neplatne a kazdy novy
         # label (texel/coordinate descent) MUSI ist z classic evalu.
-        eng.send("setoption name EvalMode value 0")
+        # pin_eval_mode=False: caller si EvalMode riadi sám (napr. ini-based
+        # NNUE merania cez king_safety_probe --nnue-file).
+        if pin_eval_mode:
+            eng.send("setoption name EvalMode value 0")
         eng.send("setoption name OwnBook value false")
         eng.send("isready")
         eng.wait_for("readyok")

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import os
 import sys
 from typing import List, Optional, Tuple
 
@@ -64,6 +65,57 @@ def load_labels(path: str) -> List[Tuple[str, float]]:
     return rows
 
 
+INI_PATH = "chess.ini"
+
+
+class ini_eval_mode:
+    """Dočasne prepíše eval_mode/nnue_file v chess.ini a po skončení
+    obnoví pôvodný obsah. NNUE merania idú VÝHRADNE cez startup load
+    (ini), nie cez setoption RE-load — startup cesta je tá overená v
+    produkčnom SPRT (2026-11-05 rozhodnutie)."""
+
+    def __init__(self, eval_mode: int, nnue_file):
+        self.eval_mode = eval_mode
+        self.nnue_file = nnue_file
+        self.backup = None
+
+    def __enter__(self):
+        try:
+            with open(INI_PATH, "r", encoding="utf-8") as f:
+                self.backup = f.read()
+        except FileNotFoundError:
+            self.backup = None
+        lines = []
+        seen_em = seen_nn = False
+        if self.backup:
+            for line in self.backup.splitlines():
+                if line.startswith("eval_mode="):
+                    lines.append(f"eval_mode={self.eval_mode}")
+                    seen_em = True
+                elif line.startswith("nnue_file="):
+                    lines.append(f"nnue_file={self.nnue_file}")
+                    seen_nn = True
+                else:
+                    lines.append(line)
+        if not seen_em:
+            lines.append(f"eval_mode={self.eval_mode}")
+        if self.nnue_file is not None and not seen_nn:
+            lines.append(f"nnue_file={self.nnue_file}")
+        with open(INI_PATH, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def __exit__(self, *exc):
+        if self.backup is None:
+            try:
+                os.remove(INI_PATH)
+            except OSError:
+                pass
+        else:
+            with open(INI_PATH, "w", encoding="utf-8") as f:
+                f.write(self.backup)
+        return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="King safety / eval probe vs SF reference")
     ap.add_argument("--engine", required=True, help="engine binary")
@@ -73,6 +125,9 @@ def main() -> int:
                          "referencia je EvalMode 0 z toho isteho engine")
     ap.add_argument("--eval-mode", type=int, default=0,
                     help="EvalMode pre testovany engine (0=classic, 2=NNUE v3)")
+    ap.add_argument("--nnue-file", default=None,
+                    help="absolutna cesta k .nnue; prepise chess.ini pred startom "
+                         "(ini-based startup load, ziadny setoption re-load)")
     ap.add_argument("--go", default="depth 1", help="UCI go arguments")
     ap.add_argument("--score-scale", type=float, default=10.0)
     ap.add_argument("--median-limit", type=float, default=60.0)
@@ -84,36 +139,35 @@ def main() -> int:
         print("error: prazdne labele", file=sys.stderr)
         return 2
 
-    # Engine.start pina EvalMode=0. Pre --reference em0 bezi druha instancia
-    # ako EM0 baseline; pre --reference sf su referencne hodnoty labely.
-    ref = None
-    if args.reference == "em0":
-        ref = Engine.start(args.engine, args.go, score_scale=args.score_scale)
-    test = Engine.start(args.engine, args.go, score_scale=args.score_scale)
-    if args.eval_mode != 0 or args.reference == "em0":
-        test.send(f"setoption name EvalMode value {args.eval_mode}")
-        test.send("isready")
-        test.wait_for("readyok")
+    # Startup load: EvalMode sa nastavuje cez chess.ini (ini-based), engine
+    # sa spusta s pin_eval_mode=False — ziaden setoption EvalMode sa neposiela.
+    with ini_eval_mode(args.eval_mode, args.nnue_file):
+        ref = None
+        if args.reference == "em0":
+            ref = Engine.start(args.engine, args.go, score_scale=args.score_scale,
+                               pin_eval_mode=False)
+        test = Engine.start(args.engine, args.go, score_scale=args.score_scale,
+                            pin_eval_mode=False)
 
-    gaps: List[float] = []
-    eng_vals: List[float] = []
-    ref_vals: List[float] = []
-    try:
-        for i, (fen, sf_cp) in enumerate(labels):
-            if args.reference == "em0":
-                ref_cp = ref.eval_cp(fen)
-            else:
-                ref_cp = sf_cp
-            val = test.eval_cp(fen)
-            eng_vals.append(val)
-            ref_vals.append(ref_cp)
-            gaps.append(abs(val - ref_cp))
-            if (i + 1) % 25 == 0:
-                print(f"processed: {i + 1}/{len(labels)}")
-    finally:
-        if ref is not None:
-            ref.close()
-        test.close()
+        gaps: List[float] = []
+        eng_vals: List[float] = []
+        ref_vals: List[float] = []
+        try:
+            for i, (fen, sf_cp) in enumerate(labels):
+                if args.reference == "em0":
+                    ref_cp = ref.eval_cp(fen)
+                else:
+                    ref_cp = sf_cp
+                val = test.eval_cp(fen)
+                eng_vals.append(val)
+                ref_vals.append(ref_cp)
+                gaps.append(abs(val - ref_cp))
+                if (i + 1) % 25 == 0:
+                    print(f"processed: {i + 1}/{len(labels)}")
+        finally:
+            if ref is not None:
+                ref.close()
+            test.close()
 
     mean_gap = sum(gaps) / len(gaps)
     med_gap = percentile_median(gaps)
