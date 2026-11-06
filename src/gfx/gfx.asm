@@ -50,6 +50,7 @@ sysfs_bpp:
 section .text
 
 global gfx_init, gfx_close, gfx_run, gfx_refresh, gfx_square_from_xy
+global parse_color
 
 extern config_get, parse_int
 extern generate_all_moves, parse_user_move, find_move, apply_move, update_position_state, compute_hash, record_hash

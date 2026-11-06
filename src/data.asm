@@ -227,6 +227,8 @@ global key_framebuffer, default_framebuffer, key_mouse, default_mouse, key_debug
 global key_square_size, default_square_size, key_light_square, default_light_square
 global key_dark_square, default_dark_square, key_highlight, default_highlight
 global key_assets, default_assets, piece_name_ptrs
+global key_unicode_pieces, default_unicode_pieces, unicode_pieces
+global cmdline_argc, cmdline_argv
 
 book_filename:
     db "book.book", 0
@@ -423,6 +425,11 @@ key_assets:
 default_assets:
     db "assets/", 0
 
+key_unicode_pieces:
+    db "unicode_pieces", 0
+default_unicode_pieces:
+    db "0", 0
+
 key_debug:
     db "debug", 0
 default_debug:
@@ -555,6 +562,13 @@ global book_rating_flag
 book_rating_flag: resb 1       ; 1 = prebieha book rating (check_time nepoluje stdin)
 global lang_is_en
 lang_is_en:     resb 1
+
+global unicode_pieces
+unicode_pieces: resb 1       ; 1 = textova sachovnica kreslena cez unicode polobloky
+
+; cmdline snapshot z _start (argc a ukazatel na argv[0]) pre key=value override
+cmdline_argc:   resq 1
+cmdline_argv:   resq 1
 
 global tt_base, tt_bytes, tt_mask
 tt_base:        resq 1

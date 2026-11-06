@@ -69,6 +69,9 @@ $(OBJDIR)/tb.o: $(SRCDIR)/tb/core_io.asm $(SRCDIR)/tb/pairs_decode.asm $(SRCDIR)
 # position.asm includuje generovane magics.inc a lookup tabulky
 $(OBJDIR)/position.o: $(SRCDIR)/magics.inc $(SRCDIR)/bitboard_tables.inc
 
+# board.asm includuje bitmapy figuriek pre unicode rezim
+$(OBJDIR)/board.o: $(SRCDIR)/piece_bitmaps.inc
+
 clean:
 	rm -rf $(OBJDIR) $(TARGET) $(TARGET_STATIC)
 

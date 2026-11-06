@@ -198,6 +198,9 @@ extern bench_str_pct, bench_str_pct_end
 extern book_rating_flag
 extern config_filename, key_book, default_book, key_eco, default_eco, key_search_depth, default_search_depth, key_debug, default_debug
 extern key_language, default_language, key_syzygy, default_syzygy, key_book_mode, default_book_mode, key_book_search_depth, default_book_search_depth, key_eval_mode, default_eval_mode, key_nnue_file, default_nnue_file, key_threads, default_threads
+extern key_unicode_pieces, default_unicode_pieces, unicode_pieces
+extern key_light_square, default_light_square, key_dark_square, default_dark_square
+extern light_col, dark_col, parse_color, config_buf, cmdline_argc, cmdline_argv
 extern eco_load, eco_test_print
 extern lang_file_en, lang_file_sk
 extern lkey_menu_title, ldef_menu_title
@@ -935,9 +938,220 @@ select_game_mode:
     ret
 
 ; ============================================================
+; apply_cmdline_overrides - pre kazdy argv argument tvaru key=value
+; prepise hodnotu kluca priamo v config_buf (in-place, so zvyskom
+; bufferu sa posuva). Neznama kluc = ignorovane. Bez vystupu.
+; ============================================================
+apply_cmdline_overrides:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 48
+    ; [rsp+0]  = argc
+    ; [rsp+8]  = &argv[0]
+    ; [rsp+16] = value ptr (v argv)
+    ; [rsp+24] = value len
+    mov rax, [cmdline_argc]
+    mov [rsp+0], rax
+    mov rax, [cmdline_argv]
+    mov [rsp+8], rax
+    cmp qword [rsp+0], 2
+    jl .done
+    mov r14, 1                      ; i = 1
+.arg_loop:
+    cmp r14, [rsp+0]
+    jge .done
+    mov rax, [rsp+8]
+    mov rbx, [rax + r14*8]          ; argv[i]
+    ; najdi '=' v argumente
+    xor rcx, rcx
+.find_eq:
+    movzx rax, byte [rbx + rcx]
+    test al, al
+    jz .next_arg                    ; bez '=' -> preskoc
+    cmp al, '='
+    je .have_eq
+    inc rcx
+    jmp .find_eq
+.have_eq:
+    test rcx, rcx
+    jz .next_arg                    ; prazdny kluc
+    mov r15, rcx                    ; r15 = key len
+    lea rax, [rbx + rcx + 1]
+    mov [rsp+16], rax               ; value ptr
+    xor rcx, rcx
+.val_len:
+    mov rax, [rsp+16]
+    cmp byte [rax + rcx], 0
+    je .val_done
+    inc rcx
+    jmp .val_len
+.val_done:
+    mov [rsp+24], rcx               ; value len
+    ; --- vyhladaj riadok s klucom v config_buf ---
+    lea r10, [config_buf]
+.cfg_scan:
+    movzx rax, byte [r10]
+    test al, al
+    jz .next_arg                    ; kluc v ini nie je
+    cmp al, ' '
+    je .cfg_skip
+    cmp al, 9
+    je .cfg_skip
+    cmp al, 10
+    je .cfg_skip
+    cmp al, 13
+    je .cfg_skip
+    cmp al, ';'
+    je .cfg_skipline
+    cmp al, '['
+    je .cfg_skipline
+    ; porovnaj kluc na r10 s argv klucom (rbx, r15)
+    xor rcx, rcx
+    mov r11, r10
+.key_cmp:
+    cmp rcx, r15
+    je .key_tail
+    movzx rax, byte [rbx + rcx]
+    cmp al, [r11 + rcx]
+    jne .cfg_skipline
+    inc rcx
+    jmp .key_cmp
+.key_tail:
+    movzx rax, byte [r11 + rcx]
+    cmp al, '='
+    je .key_found
+    cmp al, ' '
+    je .key_tail_adv
+    cmp al, 9
+    je .key_tail_adv
+    jmp .cfg_skipline
+.key_tail_adv:
+    inc rcx
+    jmp .key_tail
+.key_found:
+    inc rcx                         ; za '='
+    lea rsi, [r11 + rcx]
+.vws:
+    movzx rax, byte [rsi]
+    cmp al, ' '
+    je .vws_adv
+    cmp al, 9
+    je .vws_adv
+    cmp al, 13
+    je .vws_adv
+    jmp .vws_done
+.vws_adv:
+    inc rsi
+    jmp .vws
+.vws_done:
+    ; rsi = zaciatok starej hodnoty; najdi koniec riadku
+    mov rdi, rsi
+.vend:
+    movzx rax, byte [rdi]
+    test al, al
+    jz .vend_done
+    cmp al, 10
+    je .vend_done
+    inc rdi
+    jmp .vend
+.vend_done:
+    ; rsi = vstart, rdi = vend ; r12 = oldlen, r13 = newlen, r11 = delta
+    mov r12, rdi
+    sub r12, rsi
+    mov r13, [rsp+24]
+    mov r11, r13
+    sub r11, r12
+    jz .copy_val
+    ; total = strlen(config_buf) ; kontrola limitu 4094
+    lea rax, [config_buf]
+    xor edx, edx
+.tot:
+    cmp byte [rax + rdx], 0
+    je .tot_done
+    inc rdx
+    jmp .tot
+.tot_done:
+    lea rax, [rdx + r11]
+    cmp rax, 4094
+    jg .next_arg                    ; nezmesti sa, nechaj povodnu hodnotu
+    ; memmove config_buf[vend .. total] (vratane NUL) o delta = r11
+    ; dlzka = total + 1 - (vend - config_buf)
+    lea rax, [config_buf]
+    mov r10, rdi
+    sub r10, rax                    ; offset vend
+    inc rdx                         ; total + 1
+    sub rdx, r10                    ; rdx = dlzka bloku
+    test r11, r11
+    js .move_left
+    ; delta > 0: kopiruj od konca smerom dopredu
+    lea rax, [rdi + rdx - 1]        ; src end
+    lea rcx, [rax + r11]            ; dst end
+.mr_loop:
+    test rdx, rdx
+    jz .copy_val
+    movzx r8d, byte [rax]
+    mov [rcx], r8b
+    dec rax
+    dec rcx
+    dec rdx
+    jmp .mr_loop
+.move_left:
+    ; delta < 0: kopiruj od zaciatku
+    lea rcx, [rdi + r11]            ; dst
+.ml_loop:
+    test rdx, rdx
+    jz .copy_val
+    movzx r8d, byte [rdi]
+    mov [rcx], r8b
+    inc rdi
+    inc rcx
+    dec rdx
+    jmp .ml_loop
+.copy_val:
+    ; prepis hodnotu: r13 bajtov z [rsp+16] na vstart (rsi)
+    mov rdi, rsi
+    mov rsi, [rsp+16]
+    mov rcx, r13
+    rep movsb
+    jmp .next_arg
+.cfg_skip:
+    inc r10
+    jmp .cfg_scan
+.cfg_skipline:
+    movzx rax, byte [r10]
+    test al, al
+    jz .next_arg
+    cmp al, 10
+    je .cfg_skipnl
+    inc r10
+    jmp .cfg_skipline
+.cfg_skipnl:
+    inc r10
+    jmp .cfg_scan
+.next_arg:
+    inc r14
+    jmp .arg_loop
+.done:
+    add rsp, 48
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; ============================================================
 ; Hlavny vstup programu
 ; ============================================================
 _start:
+    ; snapshot argc/argv pre apply_cmdline_overrides (RSP este bez calloveho ramca)
+    mov rax, [rsp]
+    mov [cmdline_argc], rax
+    lea rax, [rsp + 8]
+    mov [cmdline_argv], rax
     ; argv: ak argv[1] == "--uci", nastav uci_requested este pred inicializaciou
     ; ([rsp]=argc, [rsp+16]=argv[1]; RSP je tu 16B zarovnany, bez callov)
     cmp qword [rsp], 2
@@ -976,6 +1190,33 @@ _start:
     ; nacitaj konfiguraciu
     lea rdi, [config_filename]
     call load_config
+    ; cmdline override: argumenty tvaru key=value prepisu hodnoty v chess.ini
+    call apply_cmdline_overrides
+
+    ; unicode rezim textovej sachovnice (0 = klasicke ASCII policka)
+    lea rdi, [key_unicode_pieces]
+    lea rsi, [default_unicode_pieces]
+    call config_get
+    mov rsi, rax
+    call parse_int
+    test rax, rax
+    setnz byte [unicode_pieces]
+
+    ; farby policok pre unicode rezim (parse_color vrati 0xFFRRGGBB;
+    ; gfx_init si ich pri vstupe do gfx rezimu nacita znovu)
+    lea rdi, [key_light_square]
+    lea rsi, [default_light_square]
+    call config_get
+    mov rdi, rax
+    call parse_color
+    mov [light_col], eax
+
+    lea rdi, [key_dark_square]
+    lea rsi, [default_dark_square]
+    call config_get
+    mov rdi, rax
+    call parse_color
+    mov [dark_col], eax
 
     ; nacitaj opening book
     lea rdi, [key_book]
