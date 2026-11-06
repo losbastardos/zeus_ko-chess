@@ -13,8 +13,6 @@ DEFAULT REL
 
 section .data
 
-mode_rb: db "rb", 0
-
 msg_sdl_error:
     db "Chyba: SDL inicializacia zlyhala.", 10, 0
 msg_sdl_error_len equ $ - msg_sdl_error - 1
@@ -23,9 +21,9 @@ msg_sdl_window:
     db "Chyba: SDL okno sa nepodarilo vytvorit.", 10, 0
 msg_sdl_window_len equ $ - msg_sdl_window - 1
 
-msg_sdl_bmp:
-    db "Chyba: SDL nacitanie BMP figury zlyhalo.", 10, 0
-msg_sdl_bmp_len equ $ - msg_sdl_bmp - 1
+msg_sdl_piece:
+    db "Chyba: nepodarilo sa vytvorit surface figurky.", 10, 0
+msg_sdl_piece_len equ $ - msg_sdl_piece - 1
 
 msg_sdl_return:
     db "Navrat do textoveho rezimu.", 10, 0
@@ -96,19 +94,17 @@ extern debug
 extern move_buf, move_buf_len
 extern square_size, board_offset_x, board_offset_y
 extern light_col, dark_col, highlight_col
-extern assets_path
-extern piece_name_ptrs
+extern piece_bitmaps
 extern key_square_size, default_square_size
 extern key_light_square, default_light_square
 extern key_dark_square, default_dark_square
 extern key_highlight, default_highlight
-extern key_assets, default_assets
 extern gfx_highlight_sq
 
 extern SDL_Init, SDL_Quit
 extern SDL_CreateWindow, SDL_DestroyWindow, SDL_GetWindowSurface
 extern SDL_UpdateWindowSurface
-extern SDL_RWFromFile, SDL_LoadBMP_RW, SDL_FreeSurface, SDL_SetColorKey
+extern SDL_CreateRGBSurface, SDL_FreeSurface, SDL_SetColorKey
 extern SDL_MapRGB, SDL_FillRect, SDL_UpperBlit
 extern SDL_WaitEvent, SDL_WaitEventTimeout, SDL_Delay
 
@@ -152,58 +148,6 @@ print_msg:
     mov rdi, STDOUT
     syscall
     pop rdx
-    pop rax
-    ret
-
-; ============================================================
-; str_copy - kopiruje C-string z rsi do rdi, max rcx
-; ============================================================
-str_copy:
-    push rax
-    push rbx
-    xor rbx, rbx
-.loop:
-    cmp rbx, rcx
-    jge .done
-    mov al, [rsi + rbx]
-    mov [rdi + rbx], al
-    test al, al
-    jz .done
-    inc rbx
-    jmp .loop
-.done:
-    pop rbx
-    pop rax
-    ret
-
-; ============================================================
-; str_append
-; ============================================================
-str_append:
-    push rax
-    push rbx
-    push rcx
-    push rdx
-    mov rcx, rdi
-.len1:
-    mov al, [rcx]
-    test al, al
-    jz .copy2
-    inc rcx
-    jmp .len1
-.copy2:
-    xor rdx, rdx
-.loop:
-    mov al, [rsi + rdx]
-    mov [rcx + rdx], al
-    test al, al
-    jz .done
-    inc rdx
-    jmp .loop
-.done:
-    pop rdx
-    pop rcx
-    pop rbx
     pop rax
     ret
 
@@ -332,66 +276,100 @@ sdl_set_colorkey:
     ret
 
 ; ============================================================
-; load_bmp_sdl - nacita figurku do SDL_Surface
-; Vstup: r12 = index 0..11
+; load_bmp_sdl - vytvori SDL_Surface figurky z piece_bitmaps
+; (16x16 1bpp maska, nearest-neighbor upscale na 60x60)
+; Vstup: r12 = index 0..11 (0-5 biele, 6-11 cierne P,N,B,R,Q,K)
 ; ============================================================
 load_bmp_sdl:
     push rbx
+    push rbp
     push r12
     push r13
     push r14
     push r15
-
-    sub rsp, 128
-    mov rdi, rsp
-    lea rsi, [assets_path]
-    mov rcx, 127
-    call str_copy
-
-    mov rdi, rsp
-.len:
-    mov al, [rdi]
-    test al, al
-    jz .check_slash
-    inc rdi
-    jmp .len
-.check_slash:
-    mov al, [rdi - 1]
-    cmp al, '/'
-    je .append
-    mov byte [rdi], '/'
-    mov byte [rdi + 1], 0
-.append:
-    lea rdi, [rsp]
-    lea rsi, [piece_name_ptrs]
-    mov rax, [rsi + r12*8]
-    mov rsi, rax
-    call str_append
-
-    mov rdi, rsp
-    lea rsi, [mode_rb]
-    sdl_call SDL_RWFromFile
+    ; maska + farba pixelu figurky
+    mov eax, r12d
+    mov r13d, 0xFF000000            ; biela figurka (RGBA layout surface)
+    or r13d, 0x00F0F0F0
+    cmp eax, 6
+    jb .col_ok
+    sub eax, 6
+    mov r13d, 0xFF202020            ; cierna figurka
+.col_ok:
+    shl eax, 5
+    lea r14, [piece_bitmaps]
+    add r14, rax                    ; r14 = maska
+    ; SDL_CreateRGBSurface(0, 60, 60, 32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000)
+    ; pozor: sdl_call nie je bezpecne pre stack argumenty -> vlastne zarovnanie
+    xor edi, edi
+    mov esi, 60
+    mov edx, 60
+    mov ecx, 32
+    mov r8d, 0x00FF0000
+    mov r9d, 0x0000FF00
+    sub rsp, 24                     ; zarovnanie + priestor pre 2 stack argumenty
+    mov qword [rsp], 0x000000FF     ; Bmask
+    mov qword [rsp+8], 0            ; Amask (dole dword)
+    mov dword [rsp+8], -16777216    ; = 0xFF000000
+    call SDL_CreateRGBSurface
+    add rsp, 24
     test rax, rax
     jz .error
-    mov rdi, rax
-    mov rsi, 1
-    sdl_call SDL_LoadBMP_RW
-    test rax, rax
-    jz .error
-    mov r15, rax
-
+    mov r15, rax                    ; surface
+    ; vypln pixelky: bit=1 -> farba figurky, bit=0 -> magenta (colorkey)
+    mov rbx, [r15 + 32]             ; surface->pixels
+    mov r8d, [r15 + 24]             ; surface->pitch
+    xor r9d, r9d                    ; dy
+    xor ecx, ecx                    ; src_y
+    xor edi, edi                    ; acc_y
+.row:
+    cmp r9d, 60
+    jge .filled
+    xor esi, esi                    ; dx
+    xor ebp, ebp                    ; src_x (rbp = volny, nie je frame pointer)
+    xor eax, eax                    ; acc_x
+.col:
+    cmp esi, 60
+    jge .next_row
+    ; bit = mask[src_y][src_x]
+    mov edx, ebp
+    shr edx, 3
+    movzx r10d, byte [r14 + rdx]
+    mov edx, ebp
+    and edx, 7
+    mov r11d, 7
+    sub r11d, edx
+    bt r10d, r11d
+    mov edx, 0xFF000000             ; magenta = transparentne
+    or edx, 0x00FF00FF
+    jnc .write
+    mov edx, r13d
+.write:
+    mov [rbx + rsi*4], edx
+    inc esi
+    add eax, 16
+    cmp eax, 60
+    jl .col
+    sub eax, 60
+    inc ebp                         ; src_x++
+    jmp .col
+.next_row:
+    add rbx, r8                     ; dalsi cielovy riadok (pitch)
+    inc r9d
+    add edi, 16
+    cmp edi, 60
+    jl .row
+    sub edi, 60
+    add r14, 2                      ; dalsi zdrojovy riadok masky (src_y++)
+    jmp .row
+.filled:
     mov rdi, r15
     call sdl_set_colorkey
-
-    lea rdi, [sdl_bmps]
-    mov [rdi + r12*8], r15
-
-    add rsp, 128
-    xor rax, rax
+    lea rax, [sdl_bmps]
+    mov [rax + r12*8], r15
+    xor eax, eax
     jmp .done
-
 .error:
-    add rsp, 128
     mov rax, 1
 .done:
     pop r15
@@ -454,15 +432,6 @@ sdl_gfx_init:
     push r12
 
     mov byte [gfx_highlight_sq], 255
-
-    ; assets path
-    lea rdi, [key_assets]
-    lea rsi, [default_assets]
-    call config_get
-    lea rdi, [assets_path]
-    mov rsi, rax
-    mov rcx, 63
-    call str_copy
 
     ; square size
     lea rdi, [key_square_size]
@@ -536,7 +505,7 @@ sdl_gfx_init:
 
     call load_all_bmps_sdl
     test rax, rax
-    jnz .bmp_error
+    jnz .piece_error
 
     xor rax, rax
     jmp .done
@@ -557,9 +526,9 @@ sdl_gfx_init:
     mov rax, 1
     jmp .done
 
-.bmp_error:
-    mov rdi, msg_sdl_bmp
-    mov rsi, msg_sdl_bmp_len
+.piece_error:
+    mov rdi, msg_sdl_piece
+    mov rsi, msg_sdl_piece_len
     call print_msg
     call sdl_gfx_close
     mov rax, 1
@@ -578,7 +547,7 @@ sdl_gfx_close:
     push r12
 
     xor r12, r12
-.bmp_loop:
+.surf_loop:
     cmp r12, 12
     jge .destroy
     lea rbx, [sdl_bmps]
@@ -590,7 +559,7 @@ sdl_gfx_close:
     mov qword [rbx + r12*8], 0
 .next_bmp:
     inc r12
-    jmp .bmp_loop
+    jmp .surf_loop
 
 .destroy:
     mov rax, [sdl_window]
