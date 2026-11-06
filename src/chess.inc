@@ -71,6 +71,10 @@ CASTLE_BQ   equ 8
 INF         equ 1000000
 MATE_SCORE  equ 50000
 
+; Historia hashov (detekcia opakovanej pozicie)
+HASH_HISTORY_MAX      equ 256   ; kapacita zasobnika hash historie
+HASH_HISTORY_SCAN_MAX equ 100   ; draw scan: stacia posledne N zaznamov
+
 ; Transposition table flags
 TT_EXACT    equ 0
 TT_LOWER    equ 1

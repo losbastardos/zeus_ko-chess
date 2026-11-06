@@ -151,6 +151,16 @@ quiescence:
     cmp rcx, r15
     jge .qs_done
 
+    ; --- STOP CHECK medzi tahmi (UCI stop / smp stop / hard limit) ---
+    ; navrat 0 (ako existujuci abort na vstupe uzla), bez TT store
+    call check_time
+    test eax, eax
+    jz .qs_stop_check_done
+    mov byte [uci_stop_flag], 1
+    xor eax, eax
+    jmp .qs_exit
+.qs_stop_check_done:
+
     ; --- selection ordering: brania (MVV-LVA + cap_history) dopredu ---
     ; (drive sa qsearch prehraval v poradi generovania)
     mov r10, rcx            ; best index

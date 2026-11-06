@@ -1327,7 +1327,7 @@ record_hash:
     push rax
     push rbx
     mov rbx, [hash_count]
-    cmp rbx, 256
+    cmp rbx, HASH_HISTORY_MAX
     jge .done
     lea rax, [hash_history]
     mov rcx, [position_hash]
@@ -1342,6 +1342,8 @@ record_hash:
 ; ============================================================
 ; check_repetition - kontroluje 3-kratne opakovanie pozicie
 ; Vystup: rax = 1 ak 3x, inak 0
+; Bounded scan: stacia posledne HASH_HISTORY_SCAN_MAX zaznamov historie,
+; pri dlhych partiach netreba prehladavat celu historiu od zaciatku.
 ; ============================================================
 check_repetition:
     push rbx
@@ -1351,7 +1353,11 @@ check_repetition:
     mov rcx, [position_hash]
     xor rax, rax
     xor rdx, rdx
-    xor rbx, rbx
+    xor rbx, rbx                ; start = 0
+    cmp qword [hash_count], HASH_HISTORY_SCAN_MAX
+    jbe .loop
+    mov rbx, [hash_count]
+    sub rbx, HASH_HISTORY_SCAN_MAX
 .loop:
     cmp rbx, [hash_count]
     jge .done

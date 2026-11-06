@@ -91,17 +91,24 @@ negamax:
     jae .draw_score
     ; opakovanie pozicie z historie hry (2. vyskyt = remiza)
     ; repetitia nemoze nastat skor ako po 4 ply od rootu
+    ; bounded scan: stacia posledne HASH_HISTORY_SCAN_MAX zaznamov,
+    ; pri dlhych partiach netreba prehladavat celu historiu od zaciatku
     cmp qword [search_ply], 4
     jl .no_draw
-    lea rsi, [hash_history]
     mov rdx, [hash_count]
+    xor ecx, ecx                ; start = 0
+    cmp rdx, HASH_HISTORY_SCAN_MAX
+    jbe .draw_start_ok
+    lea rcx, [rdx - HASH_HISTORY_SCAN_MAX]
+.draw_start_ok:
+    lea rsi, [hash_history]
     mov rdi, [position_hash]
 .draw_loop:
-    test rdx, rdx
-    jz .no_draw
-    dec rdx
-    cmp [rsi + rdx*8], rdi
+    cmp rcx, rdx
+    jge .no_draw
+    cmp [rsi + rcx*8], rdi
     je .draw_score
+    inc rcx
     jmp .draw_loop
 .draw_score:
     xor eax, eax
@@ -771,6 +778,19 @@ negamax:
 .move_loop:
     cmp rcx, r15
     jge .loop_done
+
+    ; --- STOP CHECK medzi tahmi (UCI stop / smp stop / hard limit) ---
+    ; check_time medzi tahmi: vlajky sa kontroluju na urovni tahov, nie az
+    ; na vstupe uzla (2047-node gate); pri aborte okamzity unwind s
+    ; bezpecnym navratom best-so-far, root vyhodnoti doterajsi best_move.
+    ; uci_stop_flag nastav aj pri smp stop: guard nizsie potom preskoci
+    ; TT store (pri aborte neukladaj, ako existujuca abort cesta uzla).
+    call check_time
+    test eax, eax
+    jz .stop_check_done
+    mov byte [uci_stop_flag], 1
+    jmp .loop_done
+.stop_check_done:
 
     ; selection ordering podla predvypocitanych klucov (swap tah + kluc)
     mov r10, rcx            ; best index
