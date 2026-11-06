@@ -226,7 +226,6 @@ global lkey_panel_help_summary, ldef_panel_help_summary
 global key_framebuffer, default_framebuffer, key_mouse, default_mouse, key_debug, default_debug
 global key_square_size, default_square_size, key_light_square, default_light_square
 global key_dark_square, default_dark_square, key_highlight, default_highlight
-global key_assets, default_assets, piece_name_ptrs
 global key_unicode_pieces, default_unicode_pieces, unicode_pieces
 global cmdline_argc, cmdline_argv
 
@@ -420,11 +419,6 @@ key_highlight:
 default_highlight:
     db "0x55AA55", 0
 
-key_assets:
-    db "assets", 0
-default_assets:
-    db "assets/", 0
-
 key_unicode_pieces:
     db "unicode_pieces", 0
 default_unicode_pieces:
@@ -435,21 +429,6 @@ key_debug:
 default_debug:
     db "0", 0
 
-piece_name_ptrs:
-    dq .pn_wP, .pn_wN, .pn_wB, .pn_wR, .pn_wQ, .pn_wK
-    dq .pn_bP, .pn_bN, .pn_bB, .pn_bR, .pn_bQ, .pn_bK
-.pn_wP: db "wP.bmp", 0
-.pn_wN: db "wN.bmp", 0
-.pn_wB: db "wB.bmp", 0
-.pn_wR: db "wR.bmp", 0
-.pn_wQ: db "wQ.bmp", 0
-.pn_wK: db "wK.bmp", 0
-.pn_bP: db "bP.bmp", 0
-.pn_bN: db "bN.bmp", 0
-.pn_bB: db "bB.bmp", 0
-.pn_bR: db "bR.bmp", 0
-.pn_bQ: db "bQ.bmp", 0
-.pn_bK: db "bK.bmp", 0
 
 ; Male bufre
 rank_char_buf:   db "0 ", 0
@@ -520,9 +499,9 @@ global book_ptrs, book_sizes, book_count, search_depth
 
 global gfx_mode, gfx_initialized, fb_ptr, fb_size, fb_width, fb_height
 global fb_bpp, fb_stride, fb_bytes, square_size, board_offset_x, board_offset_y
-global light_col, dark_col, highlight_col, bg_col, assets_path, mouse_device, debug
+global light_col, dark_col, highlight_col, bg_col, mouse_device, debug
 global mouse_fd, mouse_x, mouse_y, mouse_btn_left, gfx_highlight_sq
-global bmp_ptrs, bmp_sizes, bmp_widths, bmp_heights, gfx_fb_fd
+global gfx_fb_fd
 global gfx_active_backend
 
 position_hash:  resq 1
@@ -715,7 +694,6 @@ light_col:       resd 1
 dark_col:        resd 1
 highlight_col:   resd 1
 bg_col:          resd 1
-assets_path:     resb 64
 mouse_device:    resb 64
 mouse_fd:        resq 1
 mouse_x:         resd 1
@@ -723,9 +701,5 @@ mouse_y:         resd 1
 mouse_btn_left:  resb 1
 gfx_highlight_sq: resb 1
 debug:           resb 1
-bmp_ptrs:        resq 12
-bmp_sizes:       resq 12
-bmp_widths:      resd 12
-bmp_heights:     resd 12
 gfx_fb_fd:       resd 1
 gfx_active_backend: resb 1
