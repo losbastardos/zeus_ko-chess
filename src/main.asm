@@ -201,6 +201,7 @@ extern key_language, default_language, key_syzygy, default_syzygy, key_book_mode
 extern key_unicode_pieces, default_unicode_pieces, unicode_pieces
 extern key_light_square, default_light_square, key_dark_square, default_dark_square
 extern light_col, dark_col, parse_color, config_buf, cmdline_argc, cmdline_argv
+extern piece_gen_init
 extern eco_load, eco_test_print
 extern lang_file_en, lang_file_sk
 extern lkey_menu_title, ldef_menu_title
@@ -1276,6 +1277,10 @@ _start:
     call parse_int
     test rax, rax
     setnz byte [debug]
+
+    ; proceduralne bitmapy figuriek (farbovo neutralne masky 16x16);
+    ; pri debug=1 sa hned vytlacia ako #/. dump
+    call piece_gen_init
 
     ; nacitaj book_mode (0 = instant, 1 = vyber knizneho tahu searchom)
     lea rdi, [key_book_mode]

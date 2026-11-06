@@ -57,8 +57,6 @@ board_uni_ranksp:
 board_uni_rankpad:
     db "  ", 0
 
-%include "piece_bitmaps.inc"
-
 section .text
 
 global init_board, update_position_state, update_position_state_search, print_board, toggle_board_view
@@ -75,6 +73,7 @@ extern rank_char_buf, square_char_buf
 extern print_newline, print_panel_line
 extern write_cstr
 extern unicode_pieces, light_col, dark_col
+extern piece_bitmaps
 
 ; ============================================================
 ; print_piece_cell - vypise jedno policko ako | X |
@@ -575,15 +574,11 @@ uni_print_cell_row:
     mov eax, 0x00202020             ; cierna figurka
 .wcol:
     mov r14d, eax                   ; r14 = farba figurky
-    ; offset bitmapy: ((piece & PIECE_MASK) - 1) * 32 + (black ? 6*32 : 0)
+    ; offset bitmapy: maska je farbovo neutralna -> len typ figurky
     mov eax, edi
     and eax, PIECE_MASK
     dec eax
     shl eax, 5
-    test r10d, r10d
-    jz .woff
-    add eax, 192                    ; 6 ciernych figur za bielym blokom
-.woff:
     lea r10, [piece_bitmaps]
     add r10, rax
     mov r11d, edx

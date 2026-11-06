@@ -10,7 +10,7 @@ TARGET_STATIC = chess-static
 SRCDIR      = src
 OBJDIR      = obj
 
-SRCS        = main.asm board.asm move.asm position.asm movegen.asm legal.asm io.asm data.asm eval.asm search.asm see.asm hash.asm tt.asm book.asm eco.asm tb.asm nnue.asm uci.asm smp.asm panel.asm fen.asm pgn.asm suite.asm gfx/config.asm gfx/gfx.asm gfx/mouse.asm gfx/sdl.asm
+SRCS        = main.asm board.asm piece_gen.asm move.asm position.asm movegen.asm legal.asm io.asm data.asm eval.asm search.asm see.asm hash.asm tt.asm book.asm eco.asm tb.asm nnue.asm uci.asm smp.asm panel.asm fen.asm pgn.asm suite.asm gfx/config.asm gfx/gfx.asm gfx/mouse.asm gfx/sdl.asm
 
 SRCS_STATIC = $(filter-out gfx/sdl.asm,$(SRCS)) gfx/sdl_stub.asm
 
@@ -68,9 +68,6 @@ $(OBJDIR)/tb.o: $(SRCDIR)/tb/core_io.asm $(SRCDIR)/tb/pairs_decode.asm $(SRCDIR)
 
 # position.asm includuje generovane magics.inc a lookup tabulky
 $(OBJDIR)/position.o: $(SRCDIR)/magics.inc $(SRCDIR)/bitboard_tables.inc
-
-# board.asm includuje bitmapy figuriek pre unicode rezim
-$(OBJDIR)/board.o: $(SRCDIR)/piece_bitmaps.inc
 
 clean:
 	rm -rf $(OBJDIR) $(TARGET) $(TARGET_STATIC)
