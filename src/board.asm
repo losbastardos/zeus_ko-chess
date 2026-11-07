@@ -565,7 +565,7 @@ uni_print_color_seq:
 ; (2 vertikalne pixel rady cez jeden riadok '▀' znakov)
 ; Vstup: rdi = piece (0 = prazdne), esi = farba policka 0xRRGGBB,
 ;        edx = textovy riadok r (0..scale/2-1), ecx = scale (8 alebo 16)
-; 8px rezim: cielovy pixel = OR z 2x2 okna masky (tenke ciary nezmiznu)
+; 8px rezim: cita precomputed 8x8 masku (majority-vote downsampl zo 16x16)
 ; ============================================================
 uni_print_cell_row:
     push rbx
@@ -607,7 +607,7 @@ uni_print_cell_row:
     dec eax
     cmp r15d, 16
     je .scale16
-    ; ---- 8px: nativna 8x8 maska (1 bajt/riadok) ----
+    ; ---- 8px: 8x8 maska z majority-vote downsamplu (1 bajt/riadok) ----
     shl eax, 3
     lea r10, [piece_bitmaps_8]
     add r10, rax                    ; r10 = maska figurky (8 B)
