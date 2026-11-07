@@ -422,7 +422,7 @@ default_highlight:
 key_unicode_pieces:
     db "unicode_pieces", 0
 default_unicode_pieces:
-    db "0", 0
+    db "3", 0
 
 key_debug:
     db "debug", 0
