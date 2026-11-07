@@ -772,6 +772,19 @@ negamax:
     cmp rcx, r15
     jge .loop_done
 
+    ; --- STOP CHECK medzi tahmi (UCI stop / smp stop / hard limit) ---
+    ; check_time medzi tahmi: vlajky sa kontroluju na urovni tahov, nie az
+    ; na vstupe uzla (2047-node gate); pri aborte okamzity unwind s
+    ; bezpecnym navratom best-so-far, root vyhodnoti doterajsi best_move.
+    ; uci_stop_flag nastav aj pri smp stop: guard nizsie potom preskoci
+    ; TT store (pri aborte neukladaj, ako existujuca abort cesta uzla).
+    call check_time
+    test eax, eax
+    jz .stop_check_done
+    mov byte [uci_stop_flag], 1
+    jmp .loop_done
+.stop_check_done:
+
     ; selection ordering podla predvypocitanych klucov (swap tah + kluc)
     mov r10, rcx            ; best index
     mov r11d, -1            ; best score
