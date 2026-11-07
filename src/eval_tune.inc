@@ -8,6 +8,12 @@ DOUBLED_PEN    equ 12
 ISOLATED_PEN   equ 15
 PASSED_BASE    equ 11
 PASSED_STEP    equ 25
+; realizovatelnost passera: skala = (kd*KINGDIST + blk*BLOCK) / (7*KINGDIST + 4*BLOCK)
+; kd  = chebyshev vzdialenost nepriatelskeho krala od promotion sq passera
+;       (square rule, 0..7) — cim dalej, tym realizovatelnejsi passer
+; blk = podiel volnych policok pred pesiacom na jeho file (0..4 stvrtiny)
+PASSED_KINGDIST_SCALE equ 32
+PASSED_BLOCK_SCALE    equ 16
 CONNECTED_PP_BASE equ 8
 CONNECTED_PP_STEP equ 1
 ROOK_OPEN      equ 25

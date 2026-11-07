@@ -381,6 +381,70 @@ eval_knight_outpost:
     ret
 
 ; ============================================================
+; eval_passed_scale - realizovatelnost passera (0..288, plna = 288)
+; Vstup:  edx = sq policka promotion (file passera, rank 7/0),
+;         rsi = maska cesty (policka pred pesiacom na jeho file),
+;         r8d = sq nepriatelskeho krala
+; Vystup: eax = kd*PASSED_KINGDIST_SCALE + blk*PASSED_BLOCK_SCALE
+;         kd  = chebyshev(kral, promotion sq) 0..7 (square-rule)
+;         blk = podiel volnych policok cesty 0..4
+;         (skala = eax / (7*PASSED_KINGDIST_SCALE + 4*PASSED_BLOCK_SCALE))
+; Clobber: rax, rdi, r9, r10, r11 (rdx/rcx/rsi/r8 zachovane)
+; ============================================================
+eval_passed_scale:
+    push rdi
+    push rdx                    ; [rsp] = promotion sq
+    ; --- blk (0..4): volne policka cesty v stvrtinach ---
+    popcnt r11, rsi             ; pocet policok cesty (>= 1)
+    mov r9, rsi
+    xor r10d, r10d              ; volne policka
+.blk_loop:
+    test r9, r9
+    jz .blk_done
+    bsf rdi, r9
+    btr r9, rdi
+    lea rax, [board]
+    cmp byte [rax + rdi], EMPTY
+    jne .blk_loop
+    inc r10d
+    jmp .blk_loop
+.blk_done:
+    imul r10d, r10d, 4
+    mov eax, r10d
+    xor edx, edx
+    div r11d                    ; eax = blk
+    mov r9d, eax
+    ; --- kd (0..7): chebyshev(kral, promotion sq) — square rule ---
+    mov rax, [rsp]              ; promotion sq
+    mov r10d, eax
+    and r10d, 7                 ; file promotion
+    mov r11d, r8d
+    and r11d, 7                 ; file krala
+    sub r10d, r11d
+    jns .kd_fok
+    neg r10d
+.kd_fok:
+    shr eax, 3                  ; rank promotion (7 biely / 0 cierny)
+    mov r11d, r8d
+    shr r11d, 3                 ; rank krala
+    sub eax, r11d
+    jns .kd_rok
+    neg eax
+.kd_rok:
+    cmp r10d, eax
+    jge .kd_max
+    mov r10d, eax
+.kd_max:
+    ; --- r = kd*KINGDIST + blk*BLOCK ---
+    imul r10d, r10d, PASSED_KINGDIST_SCALE
+    imul r9d, r9d, PASSED_BLOCK_SCALE
+    add r10d, r9d
+    mov eax, r10d
+    pop rdx
+    pop rdi
+    ret
+
+; ============================================================
 ; INKREMENTALNY EVAL CACHE
 ; ============================================================
 
@@ -1228,9 +1292,26 @@ evaluate:
     jnz .pp_w_loop
     ; passed: bonus = PASSED_BASE + PASSED_STEP * rank
     bts qword [passed_w], rdx   ; zaznac bieleho passera
-    imul ecx, ecx, PASSED_STEP
-    add ecx, PASSED_BASE
-    add r15d, ecx
+    ; scaling realizovatelnosti: bonus *= r / (7*KINGDIST + 4*BLOCK)
+    ; rsi = hi_rank_masks[rank], rbx = file -> cesta = hi ranks & file
+    lea edx, [ebx + 56]         ; promotion sq (rank 7)
+    mov r8d, [rbp - 68]         ; cierny kral
+    lea rdi, [file_masks]
+    and rsi, [rdi + rbx*8]
+    push rax
+    call eval_passed_scale      ; eax = r; rcx = rank zostava zachovane
+    mov r9d, eax                ; r9d = r
+    pop r12                     ; r12 = zvysna maska (rax treba na delenie)
+    mov r10d, ecx
+    imul r10d, r10d, PASSED_STEP
+    add r10d, PASSED_BASE       ; bonus
+    imul r10d, r9d              ; bonus * r
+    mov eax, r10d
+    xor edx, edx
+    mov r11d, 7*PASSED_KINGDIST_SCALE + 4*PASSED_BLOCK_SCALE
+    div r11d                    ; eax = bonus * r / 288
+    add r15d, eax
+    mov rax, r12                ; obnov masku bielych pesiacov
     jmp .pp_w_loop
 .pp_w_done:
 
@@ -1264,11 +1345,27 @@ evaluate:
     ; passed: bonus = PASSED_BASE + PASSED_STEP * (7 - rank); rcx = rank
     ; pozor: nepouzivat eax/rax - v rax je maska ciernych pesiacov!
     bts qword [passed_b], rdx   ; zaznac cierneho passera
-    mov edx, 7
-    sub edx, ecx
-    imul edx, edx, PASSED_STEP
-    add edx, PASSED_BASE
-    sub r15d, edx
+    ; scaling realizovatelnosti: bonus *= r / (7*KINGDIST + 4*BLOCK)
+    ; rsi = lo_rank_masks[rank], rbx = file -> cesta = lo ranks & file
+    mov edx, ebx                ; promotion sq (rank 0)
+    mov r8d, [rbp - 64]         ; biely kral
+    lea rdi, [file_masks]
+    and rsi, [rdi + rbx*8]
+    push rax
+    call eval_passed_scale      ; eax = r; rcx = rank zostava zachovane
+    mov r9d, eax                ; r9d = r
+    pop r12                     ; r12 = zvysna maska (rax treba na delenie)
+    mov r10d, 7
+    sub r10d, ecx
+    imul r10d, r10d, PASSED_STEP
+    add r10d, PASSED_BASE       ; bonus
+    imul r10d, r9d              ; bonus * r
+    mov eax, r10d
+    xor edx, edx
+    mov r11d, 7*PASSED_KINGDIST_SCALE + 4*PASSED_BLOCK_SCALE
+    div r11d                    ; eax = bonus * r / 288
+    sub r15d, eax
+    mov rax, r12                ; obnov masku ciernych pesiacov
     jmp .pp_b_loop
 .pp_b_done:
 
