@@ -27,14 +27,10 @@ if ! command -v nasm &> /dev/null; then
     fi
 fi
 
-# Priprav assets/book ak chybaju
-if [ ! -f "assets/wP.bmp" ] || [ ! -f "assets/bK.bmp" ]; then
-    echo "Pripravujem figury..."
-    utils/.venv/bin/python utils/download_assets.py
-fi
+# Figurky sa generuju procedurane v engine (piece_gen.asm), BMP assety nepotrebujeme.
 if [ ! -f "book.book" ]; then
     echo "Pripravujem vzorovu knihu..."
-    utils/.venv/bin/python utils/make_sample_book.py
+    python3 utils/make_sample_book.py
 fi
 
 make clean || true
