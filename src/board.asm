@@ -85,7 +85,7 @@ extern rank_char_buf, square_char_buf
 extern print_newline, print_panel_line
 extern write_cstr
 extern unicode_pieces, light_col, dark_col
-extern piece_bitmaps
+extern piece_bitmaps, piece_bitmaps_8
 
 ; ============================================================
 ; print_piece_cell - vypise jedno policko ako | X |
@@ -561,35 +561,6 @@ uni_print_color_seq:
     ret
 
 ; ============================================================
-; uni_fold2 - zbal dva 16-bitove zdrojove riadky do 8-bitoveho vystupu
-; Vstup: eax = riadok A (bit15 = x0), edx = riadok B
-; Vystup: al = zbalene bity (bit7 = vystupny x0), ostatne bity 0
-; Clobber: ebx, ecx (pushnute)
-; ============================================================
-uni_fold2:
-    push rbx
-    push rcx
-    or eax, edx                     ; vertikalny OR dvoch zdrojovych riadkov
-    mov ebx, eax                    ; v (bit15 = x0)
-    xor eax, eax                    ; vystup
-    mov ecx, 8
-.loop:
-    mov edx, ebx
-    shr edx, 14
-    and edx, 3                      ; dvojica bitov (2x, 2x+1)
-    shl ebx, 2                      ; dalsia dvojica do bitov 15,14
-    dec ecx
-    test edx, edx
-    jz .skip
-    bts eax, ecx                    ; vystupny bit (7-i)
-.skip:
-    test ecx, ecx
-    jnz .loop
-    pop rcx
-    pop rbx
-    ret
-
-; ============================================================
 ; uni_print_cell_row - vypise jeden textovy riadok policka
 ; (2 vertikalne pixel rady cez jeden riadok '▀' znakov)
 ; Vstup: rdi = piece (0 = prazdne), esi = farba policka 0xRRGGBB,
@@ -630,40 +601,23 @@ uni_print_cell_row:
     mov eax, 0x00202020             ; cierna figurka
 .wcol:
     mov r14d, eax                   ; r14 = farba figurky
-    ; offset bitmapy: maska je farbovo neutralna -> len typ figurky
+    ; maska je farbovo neutralna -> len typ figurky
     mov eax, edi
     and eax, PIECE_MASK
     dec eax
+    cmp r15d, 16
+    je .scale16
+    ; ---- 8px: nativna 8x8 maska (1 bajt/riadok) ----
+    shl eax, 3
+    lea r10, [piece_bitmaps_8]
+    add r10, rax                    ; r10 = maska figurky (8 B)
+    movzx r12d, byte [r10 + rdx*2]          ; horny pixel riadok = r 2r
+    movzx ebx, byte [r10 + rdx*2 + 1]       ; dolny pixel riadok = 2r+1
+    jmp .cols
+.scale16:
     shl eax, 5
     lea r10, [piece_bitmaps]
     add r10, rax                    ; r10 = maska figurky (32 B)
-    cmp r15d, 16
-    je .scale16
-    ; ---- 8px: zbal 4 zdrojove riadky (4r..4r+3) do dvoch vystupnych bajtov ----
-    mov r11d, edx
-    shl r11d, 3                     ; 4 riadky * 2 bajty = 8 bajtov na textovy riadok
-    movzx eax, byte [r10 + r11]     ; top = fold2(riadok 4r, 4r+1)
-    shl eax, 8
-    movzx ecx, byte [r10 + r11 + 1]
-    or eax, ecx
-    movzx edx, byte [r10 + r11 + 2]
-    shl edx, 8
-    movzx ecx, byte [r10 + r11 + 3]
-    or edx, ecx
-    call uni_fold2
-    movzx r12d, al
-    movzx eax, byte [r10 + r11 + 4] ; bot = fold2(riadok 4r+2, 4r+3)
-    shl eax, 8
-    movzx ecx, byte [r10 + r11 + 5]
-    or eax, ecx
-    movzx edx, byte [r10 + r11 + 6]
-    shl edx, 8
-    movzx ecx, byte [r10 + r11 + 7]
-    or edx, ecx
-    call uni_fold2
-    movzx ebx, al
-    jmp .cols
-.scale16:
     mov r11d, edx
     shl r11d, 2                     ; 2 pixely/riadok * 2 bajty/riadok = 4 bajty na par
     movzx r12d, byte [r10 + r11]    ; horny pixel riadok, byte 0 (x 0-7)

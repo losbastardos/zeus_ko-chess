@@ -18,16 +18,20 @@ DEFAULT REL
 ; GEN_PX - interne makro: set/clear jedneho pixelu v maske
 ; Vstup: %1 = x (reg, cita sa ako prvy), %2 = y (reg, cita sa ako prvy)
 ;        %3 = bts | btr
+; Clipuje na gen_clip (7 alebo 15), riadkova stride = gen_stride (1/2 bajty).
 ; Clobber: rax, rcx, rdx, r10, r11
 ; ============================================================
 %macro GEN_PX 3
-    cmp %1, 15
+    cmp %1, [gen_clip]
     ja %%skip
-    cmp %2, 15
+    cmp %2, [gen_clip]
     ja %%skip
     mov r11, [gen_cur]
     mov eax, %2
-    add eax, eax                    ; y * 2 bajty/riadok
+    cmp dword [gen_stride], 2
+    jne %%s1
+    add eax, eax                    ; 2 bajty/riadok
+%%s1:
     mov ecx, %1
     cmp ecx, 8
     jb %%lo
@@ -90,6 +94,45 @@ DEFAULT REL
     call write_cstr
 %endmacro
 
+; ============================================================
+; DUMP_MASK8 - interne makro: vytlaci jednu 8x8 masku (1 bajt/riadok)
+; Vstup: %1 = meno C-stringu, %2 = index masky
+; ============================================================
+%macro DUMP_MASK8 2
+    lea rdi, [%1]
+    call write_cstr
+    mov ebx, %2
+    shl ebx, 3
+    lea r12, [piece_bitmaps_8]
+    add r12, rbx
+    xor r13d, r13d                  ; y
+%%row:
+    xor r14d, r14d                  ; x
+%%col:
+    movzx edx, byte [r12 + r13]
+    mov ecx, r14d
+    mov r10d, 7
+    sub r10d, ecx
+    bt edx, r10d
+    mov cl, '.'
+    jnc %%store
+    mov cl, '#'
+%%store:
+    mov [gen_dump_buf + r14], cl
+    inc r14d
+    cmp r14d, 8
+    jl %%col
+    mov byte [gen_dump_buf + 8], 10
+    mov byte [gen_dump_buf + 9], 0
+    lea rdi, [gen_dump_buf]
+    call write_cstr
+    inc r13d
+    cmp r13d, 8
+    jl %%row
+    lea rdi, [dump_nl]
+    call write_cstr
+%endmacro
+
 section .data
 
 dump_name_p: db "Pawn:", 10, 0
@@ -99,13 +142,24 @@ dump_name_r: db "Rook:", 10, 0
 dump_name_q: db "Queen:", 10, 0
 dump_name_k: db "King:", 10, 0
 dump_nl:     db 10, 0
+dump8_name_p: db "Pawn8:", 10, 0
+dump8_name_n: db "Knight8:", 10, 0
+dump8_name_b: db "Bishop8:", 10, 0
+dump8_name_r: db "Rook8:", 10, 0
+dump8_name_q: db "Queen8:", 10, 0
+dump8_name_k: db "King8:", 10, 0
 
 section .bss
 
 global piece_bitmaps
-piece_bitmaps:  resb 192            ; 6 masiek x 32 B (P N B R Q K)
+piece_bitmaps:  resb 192            ; 6 masiek x 32 B (16x16, P N B R Q K)
+
+global piece_bitmaps_8
+piece_bitmaps_8: resb 48            ; 6 masiek x 8 B (8x8, P N B R Q K)
 
 gen_cur:        resq 1              ; ukazatel na aktualnu masku
+gen_clip:       resd 1              ; max suradnica (7 = 8x8, 15 = 16x16)
+gen_stride:     resd 1              ; bajty na riadok (1 = 8x8, 2 = 16x16)
 gen_dump_buf:   resb 32
 
 section .text
@@ -114,10 +168,12 @@ global piece_gen_init
 extern debug, write_cstr
 
 ; ============================================================
-; gen_select - vyberie masku a vynuluje ju
+; gen_select - vyberie 16x16 masku a vynuluje ju
 ; Vstup: rdi = index 0..5
 ; ============================================================
 gen_select:
+    mov dword [gen_clip], 15
+    mov dword [gen_stride], 2
     mov eax, edi
     shl eax, 5
     lea rcx, [piece_bitmaps]
@@ -128,6 +184,21 @@ gen_select:
     mov [rcx+8], rax
     mov [rcx+16], rax
     mov [rcx+24], rax
+    ret
+
+; ============================================================
+; gen_select8 - vyberie 8x8 masku (1 bajt/riadok) a vynuluje ju
+; Vstup: rdi = index 0..5
+; ============================================================
+gen_select8:
+    mov dword [gen_clip], 7
+    mov dword [gen_stride], 1
+    mov eax, edi
+    shl eax, 3
+    lea rcx, [piece_bitmaps_8]
+    add rcx, rax
+    mov [gen_cur], rcx
+    mov qword [rcx], 0              ; 8 bajtov naraz
     ret
 
 ; ============================================================
@@ -708,6 +779,235 @@ gen_king:
     ret
 
 ; ============================================================
+; 8x8 nativne masky (1 bajt/riadok, bit7 = lavy pixel)
+; ============================================================
+
+; gen_pawn8 - pes: kruzok hlava, zuzujuce sa telo, baza
+gen_pawn8:
+    mov edi, 0
+    call gen_select8
+    mov edi, 4                      ; hlava
+    mov esi, 2
+    mov edx, 1
+    call gen_fill_circle
+    mov edi, 3                      ; telo
+    mov esi, 3
+    mov edx, 2
+    mov ecx, 2
+    call gen_fill_rect
+    mov edi, 2                      ; spodok tela
+    mov esi, 5
+    mov edx, 4
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    ret
+
+; gen_knight8 - jazdec v profile: ucho, hlava, nuchac, krk, baza
+gen_knight8:
+    mov edi, 1
+    call gen_select8
+    mov edi, 2                      ; ucho
+    mov esi, 0
+    mov edx, 4
+    mov ecx, 0
+    mov r8d, 3
+    mov r9d, 2
+    call gen_fill_triangle
+    mov edi, 3                      ; hlava
+    mov esi, 3
+    mov edx, 1
+    call gen_fill_circle
+    mov edi, 0                      ; nuchac (ploche hranie vlavo)
+    mov esi, 3
+    mov edx, 0
+    mov ecx, 5
+    mov r8d, 3
+    mov r9d, 4
+    call gen_fill_triangle
+    mov edi, 1                      ; prechod nuchac-hlava
+    mov esi, 3
+    mov edx, 1
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 1                      ; hrud
+    mov esi, 5
+    mov edx, 2
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 3                      ; krk
+    mov esi, 5
+    mov edx, 2
+    mov ecx, 2
+    call gen_fill_rect
+    mov edi, 3                      ; oddelenie ucha (clear)
+    mov esi, 1
+    mov edx, 3
+    mov ecx, 1
+    mov r8d, 1
+    call gen_line
+    mov edi, 4                      ; celist pred hlavou (clear)
+    mov esi, 4
+    mov edx, 4
+    mov ecx, 4
+    mov r8d, 1
+    call gen_line
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    ret
+
+; gen_bishop8 - strelec: mitra, pas, telo, baza, sikma strizka
+gen_bishop8:
+    mov edi, 2
+    call gen_select8
+    mov edi, 4                      ; mitra
+    mov esi, 0
+    mov edx, 1
+    mov ecx, 4
+    mov r8d, 6
+    mov r9d, 4
+    call gen_fill_triangle
+    mov edi, 2                      ; pas
+    mov esi, 4
+    mov edx, 5
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 3                      ; telo
+    mov esi, 5
+    mov edx, 3
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 2                      ; strizka cez mitru (clear)
+    mov esi, 2
+    mov edx, 5
+    mov ecx, 3
+    mov r8d, 1
+    call gen_line
+    ret
+
+; gen_rook8 - veza: 3 hradby, valec, baza
+gen_rook8:
+    mov edi, 3
+    call gen_select8
+    mov edi, 1                      ; hradby
+    mov esi, 0
+    mov edx, 1
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 3
+    mov esi, 0
+    mov edx, 2
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 6
+    mov esi, 0
+    mov edx, 1
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 2                      ; valec
+    mov esi, 1
+    mov edx, 4
+    mov ecx, 5
+    call gen_fill_rect
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    ret
+
+; gen_queen8 - kralovna: 3-ostnova koruna, telo, baza
+gen_queen8:
+    mov edi, 4
+    call gen_select8
+    mov edi, 0                      ; osten 1
+    mov esi, 2
+    mov edx, 2
+    mov ecx, 2
+    mov r8d, 1
+    mov r9d, 0
+    call gen_fill_triangle
+    mov edi, 2                      ; osten 2
+    mov esi, 2
+    mov edx, 4
+    mov ecx, 2
+    mov r8d, 3
+    mov r9d, 0
+    call gen_fill_triangle
+    mov edi, 4                      ; osten 3
+    mov esi, 2
+    mov edx, 6
+    mov ecx, 2
+    mov r8d, 5
+    mov r9d, 0
+    call gen_fill_triangle
+    mov edi, 6                      ; osten 4
+    mov esi, 2
+    mov edx, 8
+    mov ecx, 2
+    mov r8d, 7
+    mov r9d, 0
+    call gen_fill_triangle
+    mov edi, 1                      ; pasmo koruny (spaja ostrohy)
+    mov esi, 2
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 2                      ; telo
+    mov esi, 3
+    mov edx, 4
+    mov ecx, 3
+    call gen_fill_rect
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    ret
+
+; gen_king8 - kral: kriz, hlava, telo, baza
+gen_king8:
+    mov edi, 5
+    call gen_select8
+    mov edi, 4                      ; vertikala kriza
+    mov esi, 0
+    mov edx, 1
+    mov ecx, 3
+    call gen_fill_rect
+    mov edi, 2                      ; horizontala kriza
+    mov esi, 1
+    mov edx, 5
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 4                      ; hlava
+    mov esi, 4
+    mov edx, 1
+    call gen_fill_circle
+    mov edi, 3                      ; telo
+    mov esi, 5
+    mov edx, 2
+    mov ecx, 1
+    call gen_fill_rect
+    mov edi, 1                      ; baza
+    mov esi, 6
+    mov edx, 6
+    mov ecx, 1
+    call gen_fill_rect
+    ret
+
+; ============================================================
 ; piece_gen_dump - tlaci 6 masiek ako #/. (len pri debug=1)
 ; ============================================================
 piece_gen_dump:
@@ -721,6 +1021,12 @@ piece_gen_dump:
     DUMP_MASK dump_name_r, 3
     DUMP_MASK dump_name_q, 4
     DUMP_MASK dump_name_k, 5
+    DUMP_MASK8 dump8_name_p, 0
+    DUMP_MASK8 dump8_name_n, 1
+    DUMP_MASK8 dump8_name_b, 2
+    DUMP_MASK8 dump8_name_r, 3
+    DUMP_MASK8 dump8_name_q, 4
+    DUMP_MASK8 dump8_name_k, 5
     pop r14
     pop r13
     pop r12
@@ -737,6 +1043,12 @@ piece_gen_init:
     call gen_rook
     call gen_queen
     call gen_king
+    call gen_pawn8
+    call gen_knight8
+    call gen_bishop8
+    call gen_rook8
+    call gen_queen8
+    call gen_king8
     cmp byte [debug], 0
     je .done
     call piece_gen_dump
