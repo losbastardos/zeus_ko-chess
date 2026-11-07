@@ -53,6 +53,22 @@ board_uni_ranksp:
 board_uni_rankpad:
     db "  ", 0
 
+; sachove glyfy (UTF-8: E2 99 xx), poradie wP,wN,wB,wR,wQ,wK,bP..bK
+; biele su outline (U+2654-59), cierne filled (U+265A-5F)
+board_glyphs:
+    db 0xE2,0x99,0x99,0          ; wP ♙
+    db 0xE2,0x99,0x98,0          ; wN ♘
+    db 0xE2,0x99,0x97,0          ; wB ♗
+    db 0xE2,0x99,0x96,0          ; wR ♖
+    db 0xE2,0x99,0x95,0          ; wQ ♕
+    db 0xE2,0x99,0x94,0          ; wK ♔
+    db 0xE2,0x99,0x9F,0          ; bP ♟
+    db 0xE2,0x99,0x9E,0          ; bN ♞
+    db 0xE2,0x99,0x9D,0          ; bB ♝
+    db 0xE2,0x99,0x9C,0          ; bR ♜
+    db 0xE2,0x99,0x9B,0          ; bQ ♛
+    db 0xE2,0x99,0x9A,0          ; bK ♚
+
 section .text
 
 global init_board, update_position_state, update_position_state_search, print_board, toggle_board_view
@@ -322,7 +338,11 @@ update_position_state_impl:
 ; ============================================================
 print_board:
     cmp byte [unicode_pieces], 0
-    jne print_board_unicode
+    je .ascii
+    cmp byte [unicode_pieces], 3
+    je print_board_glyphs
+    jmp print_board_unicode
+.ascii:
     push rbx
     push r12
     push r13
@@ -855,5 +875,146 @@ print_board_unicode:
     cmp rbx, 8
     jl .fl_loop
     add rsp, 24
+    pop rbx
+    ret
+
+; ============================================================
+; print_board_glyphs - sachovnica z fontovych sachovych glyfov
+; (unicode_pieces=3): kazde policko = 1 znak, 8 riadkov x 8 stlpcov.
+; Biele figurky = outline glyfy (U+2654-59), cierne = filled
+; (U+265A-5F); fg = farba figurky, bg = farba policka.
+; Podporuje board_flip. Riadok: "8 " + 8 glyfov + ESC[0m.
+; ============================================================
+print_board_glyphs:
+    push rbx
+    push r12
+    push r13
+    push r15
+    call print_newline
+    call .print_letters
+    call print_newline
+
+    xor r12, r12                    ; display riadok dosky 0..7 (0 = hore)
+.rank_loop:
+    mov rax, 7
+    sub rax, r12
+    cmp byte [board_flip], 0
+    je .rank_ok
+    mov rax, r12
+.rank_ok:
+    mov r13, rax                    ; r13 = realny rank 0..7
+    ; cislo ranku v lavo
+    mov eax, r13d
+    add eax, '1'
+    mov [rank_char_buf], al
+    mov byte [rank_char_buf+1], 0
+    lea rdi, [rank_char_buf]
+    call write_cstr
+    lea rdi, [board_uni_ranksp]
+    call write_cstr
+
+    xor rbx, rbx                    ; display stlpec 0..7
+.cell_loop:
+    mov rax, rbx
+    cmp byte [board_flip], 0
+    je .file_ok
+    mov rax, 7
+    sub rax, rbx
+.file_ok:
+    mov r15, rax                    ; r15 = realny file (preziva vsetky volania)
+    mov rax, r13
+    shl rax, 3
+    add rax, r15
+    call pos_piece_at_sq_bb         ; piece byte (rax)
+    mov r9d, eax                    ; r9 = piece (preziva seq volania)
+    ; farba policka
+    mov eax, r13d
+    add eax, r15d
+    and eax, 1
+    jz .dark_sq
+    mov esi, [light_col]
+    jmp .sq_ok
+.dark_sq:
+    mov esi, [dark_col]
+.sq_ok:
+    test r9d, r9d
+    jnz .piece
+    ; prazdne policko: fg=bg=farba policka + medzera
+    push rsi
+    mov cl, 0
+    call uni_print_color_seq
+    pop rsi
+    mov cl, 1
+    call uni_print_color_seq
+    lea rdi, [board_uni_ranksp]
+    call write_cstr
+    jmp .next_cell
+.piece:
+    ; fg = farba figurky, bg = farba policka
+    mov eax, 0x00F0F0F0             ; biela figurka
+    test r9d, COLOR_MASK
+    jz .wcol
+    mov eax, 0x00202020             ; cierna figurka
+.wcol:
+    push rsi
+    mov esi, eax
+    mov cl, 0
+    call uni_print_color_seq
+    pop rsi
+    mov cl, 1
+    call uni_print_color_seq
+    ; index do tabulky glyfov: color*6 + (type-1)
+    mov eax, r9d
+    and eax, COLOR_MASK
+    shr eax, 3
+    imul eax, eax, 6
+    mov edx, r9d
+    and edx, PIECE_MASK
+    dec edx
+    add eax, edx
+    lea rdi, [board_glyphs]
+    shl eax, 2                      ; 4 bajty na zaznam
+    add rdi, rax
+    call write_cstr
+.next_cell:
+    inc rbx
+    cmp rbx, 8
+    jl .cell_loop
+    lea rdi, [board_uni_reset]
+    call write_cstr
+    call print_newline
+    inc r12
+    cmp r12, 8
+    jl .rank_loop
+    call .print_letters
+    call print_newline
+    pop r15
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+.print_letters:
+    push rbx
+    lea rdi, [board_uni_rankpad]
+    call write_cstr
+    xor rbx, rbx
+.fl_loop:
+    mov rax, rbx
+    cmp byte [board_flip], 0
+    je .fl_ok
+    mov rax, 7
+    sub rax, rbx
+.fl_ok:
+    add eax, 'a'
+    mov [square_char_buf], al
+    mov byte [square_char_buf+1], 0
+    lea rdi, [square_char_buf]
+    call write_cstr
+    lea rdi, [board_uni_ranksp]
+    call write_cstr
+    inc rbx
+    cmp rbx, 8
+    jl .fl_loop
     pop rbx
     ret
