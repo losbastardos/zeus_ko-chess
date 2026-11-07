@@ -48,10 +48,6 @@ board_uni_halfblock:
     db 0xE2, 0x96, 0x80, 0          ; '▀' (UTF-8)
 board_uni_reset:
     db 27, "[0m", 0
-board_uni_spaces16:
-    db "                ", 0         ; 16 medzier (prazdne policko)
-board_uni_spaces15:
-    db "               ", 0          ; 15 medzier (pod popisky stlpcov)
 board_uni_ranksp:
     db " ", 0
 board_uni_rankpad:
@@ -545,10 +541,40 @@ uni_print_color_seq:
     ret
 
 ; ============================================================
+; uni_fold2 - zbal dva 16-bitove zdrojove riadky do 8-bitoveho vystupu
+; Vstup: eax = riadok A (bit15 = x0), edx = riadok B
+; Vystup: al = zbalene bity (bit7 = vystupny x0), ostatne bity 0
+; Clobber: ebx, ecx (pushnute)
+; ============================================================
+uni_fold2:
+    push rbx
+    push rcx
+    or eax, edx                     ; vertikalny OR dvoch zdrojovych riadkov
+    mov ebx, eax                    ; v (bit15 = x0)
+    xor eax, eax                    ; vystup
+    mov ecx, 8
+.loop:
+    mov edx, ebx
+    shr edx, 14
+    and edx, 3                      ; dvojica bitov (2x, 2x+1)
+    shl ebx, 2                      ; dalsia dvojica do bitov 15,14
+    dec ecx
+    test edx, edx
+    jz .skip
+    bts eax, ecx                    ; vystupny bit (7-i)
+.skip:
+    test ecx, ecx
+    jnz .loop
+    pop rcx
+    pop rbx
+    ret
+
+; ============================================================
 ; uni_print_cell_row - vypise jeden textovy riadok policka
 ; (2 vertikalne pixel rady cez jeden riadok '▀' znakov)
 ; Vstup: rdi = piece (0 = prazdne), esi = farba policka 0xRRGGBB,
-;        edx = pixel-riadkovy par 0..7
+;        edx = textovy riadok r (0..scale/2-1), ecx = scale (8 alebo 16)
+; 8px rezim: cielovy pixel = OR z 2x2 okna masky (tenke ciary nezmiznu)
 ; ============================================================
 uni_print_cell_row:
     push rbx
@@ -558,15 +584,25 @@ uni_print_cell_row:
     push r15
     test rdi, rdi
     jnz .piece
-    ; prazdne policko: bg farba + 16 medzier (bez fg sekvencie)
+    ; prazdne policko: bg farba + scale medzier
+    sub rsp, 24
+    xor eax, eax
+.fill:
+    mov byte [rsp + rax], ' '
+    inc eax
+    cmp eax, ecx
+    jl .fill
+    mov byte [rsp + rax], 0
     mov cl, 1
-    call uni_print_color_seq
-    lea rdi, [board_uni_spaces16]
+    call uni_print_color_seq        ; esi = farba policka
+    mov rdi, rsp
     call write_cstr
+    add rsp, 24
     jmp .done
 
 .piece:
     mov r13d, esi                   ; r13 = farba policka
+    mov r15d, ecx                   ; r15 = scale (pocet stlpcov)
     mov eax, 0x00F0F0F0             ; biela figurka
     mov r10d, edi
     and r10d, COLOR_MASK
@@ -580,31 +616,57 @@ uni_print_cell_row:
     dec eax
     shl eax, 5
     lea r10, [piece_bitmaps]
-    add r10, rax
+    add r10, rax                    ; r10 = maska figurky (32 B)
+    cmp r15d, 16
+    je .scale16
+    ; ---- 8px: zbal 4 zdrojove riadky (4r..4r+3) do dvoch vystupnych bajtov ----
+    mov r11d, edx
+    shl r11d, 3                     ; 4 riadky * 2 bajty = 8 bajtov na textovy riadok
+    movzx eax, byte [r10 + r11]     ; top = fold2(riadok 4r, 4r+1)
+    shl eax, 8
+    movzx ecx, byte [r10 + r11 + 1]
+    or eax, ecx
+    movzx edx, byte [r10 + r11 + 2]
+    shl edx, 8
+    movzx ecx, byte [r10 + r11 + 3]
+    or edx, ecx
+    call uni_fold2
+    movzx r12d, al
+    movzx eax, byte [r10 + r11 + 4] ; bot = fold2(riadok 4r+2, 4r+3)
+    shl eax, 8
+    movzx ecx, byte [r10 + r11 + 5]
+    or eax, ecx
+    movzx edx, byte [r10 + r11 + 6]
+    shl edx, 8
+    movzx ecx, byte [r10 + r11 + 7]
+    or edx, ecx
+    call uni_fold2
+    movzx ebx, al
+    jmp .cols
+.scale16:
     mov r11d, edx
     shl r11d, 2                     ; 2 pixely/riadok * 2 bajty/riadok = 4 bajty na par
-    movzx r12d, byte [r10 + r11]    ; horny riadok, byte 0 (x 0-7)
+    movzx r12d, byte [r10 + r11]    ; horny pixel riadok, byte 0 (x 0-7)
     shl r12d, 8
-    movzx eax, byte [r10 + r11 + 1] ; horny riadok, byte 1 (x 8-15)
+    movzx eax, byte [r10 + r11 + 1] ; horny pixel riadok, byte 1 (x 8-15)
     or r12d, eax
-    movzx ebx, byte [r10 + r11 + 2] ; dolny riadok, byte 0
+    movzx ebx, byte [r10 + r11 + 2] ; dolny pixel riadok, byte 0
     shl ebx, 8
-    movzx eax, byte [r10 + r11 + 3] ; dolny riadok, byte 1
+    movzx eax, byte [r10 + r11 + 3] ; dolny pixel riadok, byte 1
     or ebx, eax
-    mov r15d, 16                    ; pocet stlpcov
+.cols:
     mov r10d, -1                    ; predchadzajuci stav (bit1=horny px, bit0=dolny px)
 .col_loop:
+    lea r9d, [r15d - 1]             ; bit index x (r9 preziva volania)
     xor eax, eax
-    test r12d, 0x8000
-    jz .no_top
+    bt r12d, r9d
+    jnc .no_top
     or eax, 2
 .no_top:
-    test ebx, 0x8000
-    jz .no_bot
+    bt ebx, r9d
+    jnc .no_bot
     or eax, 1
 .no_bot:
-    shl r12d, 1
-    shl ebx, 1
     cmp eax, r10d
     je .print_hb
     mov r10d, eax
@@ -658,16 +720,25 @@ uni_print_cell_row:
     ret
 
 ; ============================================================
-; print_board_unicode - sachovnica 8x8 policok x 16x16 px cez '▀'
+; print_board_unicode - sachovnica cez '▀' polobloky z piece_bitmaps
 ; Kazdy textovy riadok nesie 2 vertikalne pixely (fg=hore, bg=dole).
-; Podporuje board_flip (cierny pohlad). Panel sa netlaci (riadky su 130 znakov).
+; Scale: unicode_pieces=1 -> 8x8 px/policko (66 znakov sirka, zmesti sa
+; do 80-stlpcoveho terminalu), =2 -> 16x16 px (130 znakov, sirsi terminal).
+; Riadky rankov bez oddelovacich prazdnych riadkov (cierne pasy).
+; Podporuje board_flip (cierny pohlad). Panel sa netlaci.
 ; ============================================================
 print_board_unicode:
     push rbx
+    push rbp
     push r12
     push r13
     push r14
     push r15
+    mov ebp, 8                      ; scale = px velkost figurky
+    cmp byte [unicode_pieces], 2
+    jne .scale_ok
+    mov ebp, 16
+.scale_ok:
     call print_newline
     call .print_file_letters
     call print_newline
@@ -681,9 +752,11 @@ print_board_unicode:
     mov rax, r12
 .rank_ok:
     mov r13, rax                    ; r13 = realny rank 0..7
-    xor r14, r14                    ; r14 = pixel-riadkovy par 0..7
+    xor r14, r14                    ; r14 = textovy riadok ranku 0..scale/2-1
 .row_loop:
-    cmp r14, 4
+    mov eax, ebp
+    shr eax, 2                      ; prostredny riadok niesa cislo ranku
+    cmp r14, rax
     jne .no_ranknum
     mov eax, r13d
     add eax, '1'
@@ -722,6 +795,7 @@ print_board_unicode:
     mov esi, [dark_col]
 .sq_ok:
     mov edx, r14d
+    mov ecx, ebp                    ; scale
     call uni_print_cell_row
     inc rbx
     cmp rbx, 8
@@ -730,9 +804,10 @@ print_board_unicode:
     call write_cstr
     call print_newline
     inc r14
-    cmp r14, 8
+    mov eax, ebp
+    shr eax, 1                      ; scale/2 textovych riadkov na rank
+    cmp r14, rax
     jl .row_loop
-    call print_newline              ; oddelenie jednotlivych rankov
     inc r12
     cmp r12, 8
     jl .rank_loop
@@ -742,11 +817,23 @@ print_board_unicode:
     pop r14
     pop r13
     pop r12
+    pop rbp
     pop rbx
     ret
 
 .print_file_letters:
     push rbx
+    ; medzery za pismenom: scale-1 (do stack bufferu)
+    sub rsp, 24
+    mov eax, ebp
+    dec eax
+    xor ecx, ecx
+.sp_fill:
+    mov byte [rsp + rcx], ' '
+    inc ecx
+    cmp ecx, eax
+    jl .sp_fill
+    mov byte [rsp + rcx], 0
     lea rdi, [board_uni_rankpad]
     call write_cstr
     xor rbx, rbx
@@ -762,10 +849,11 @@ print_board_unicode:
     mov byte [square_char_buf+1], 0
     lea rdi, [square_char_buf]
     call write_cstr
-    lea rdi, [board_uni_spaces15]
+    mov rdi, rsp                    ; (scale-1) medzier
     call write_cstr
     inc rbx
     cmp rbx, 8
     jl .fl_loop
+    add rsp, 24
     pop rbx
     ret

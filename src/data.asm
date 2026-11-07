@@ -543,7 +543,7 @@ global lang_is_en
 lang_is_en:     resb 1
 
 global unicode_pieces
-unicode_pieces: resb 1       ; 1 = textova sachovnica kreslena cez unicode polobloky
+unicode_pieces: resb 1       ; 0 = ASCII, 1 = unicode polobloky 8px, 2 = 16px
 
 ; cmdline snapshot z _start (argc a ukazatel na argv[0]) pre key=value override
 cmdline_argc:   resq 1

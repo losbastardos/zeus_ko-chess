@@ -1194,14 +1194,22 @@ _start:
     ; cmdline override: argumenty tvaru key=value prepisu hodnoty v chess.ini
     call apply_cmdline_overrides
 
-    ; unicode rezim textovej sachovnice (0 = klasicke ASCII policka)
+    ; unicode rezim textovej sachovnice
+    ; (0 = klasicke ASCII policka, 1 = unicode 8px, 2 = unicode 16px)
     lea rdi, [key_unicode_pieces]
     lea rsi, [default_unicode_pieces]
     call config_get
     mov rsi, rax
     call parse_int
     test rax, rax
-    setnz byte [unicode_pieces]
+    jns .up_nonneg
+    xor rax, rax
+.up_nonneg:
+    cmp rax, 2
+    jle .up_store
+    mov rax, 2
+.up_store:
+    mov [unicode_pieces], al
 
     ; farby policok pre unicode rezim (parse_color vrati 0xFFRRGGBB;
     ; gfx_init si ich pri vstupe do gfx rezimu nacita znovu)
