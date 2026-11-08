@@ -69,6 +69,15 @@ board_glyphs:
     db 0xE2,0x99,0x9B,0          ; bQ ♛
     db 0xE2,0x99,0x9A,0          ; bK ♚
 
+; glyph rezim: kazde policko = 3 znaky, glyf centrovany (" X ");
+; prazdne policko = 3 medzery. Medzery nesu bg farbu policka.
+board_uni_glyphempty:
+    db "   ", 0
+board_uni_glyphpad_l:
+    db " ", 0
+board_uni_glyphpad_r:
+    db " ", 0
+
 section .text
 
 global init_board, update_position_state, update_position_state_search, print_board, toggle_board_view
@@ -834,10 +843,11 @@ print_board_unicode:
 
 ; ============================================================
 ; print_board_glyphs - sachovnica z fontovych sachovych glyfov
-; (unicode_pieces=3): kazde policko = 1 znak, 8 riadkov x 8 stlpcov.
+; (unicode_pieces=3): kazde policko = 3 znaky (" X "), 8 riadkov.
 ; Biele figurky = outline glyfy (U+2654-59), cierne = filled
-; (U+265A-5F); fg = farba figurky, bg = farba policka.
-; Podporuje board_flip. Riadok: "8 " + 8 glyfov + ESC[0m.
+; (U+265A-5F); fg = farba figurky, bg = farba policka (aj padding).
+; Podporuje board_flip. Riadok: "8 " + 8x3 znaky + ESC[0m
+; (2 + 24 = 26 znakov; pri pomere znaku 2:1 ~stvorcovy dojem).
 ; ============================================================
 print_board_glyphs:
     push rbx
@@ -893,14 +903,14 @@ print_board_glyphs:
 .sq_ok:
     test r9d, r9d
     jnz .piece
-    ; prazdne policko: fg=bg=farba policka + medzera
+    ; prazdne policko: fg=bg=farba policka + 3 medzery
     push rsi
     mov cl, 0
     call uni_print_color_seq
     pop rsi
     mov cl, 1
     call uni_print_color_seq
-    lea rdi, [board_uni_ranksp]
+    lea rdi, [board_uni_glyphempty]
     call write_cstr
     jmp .next_cell
 .piece:
@@ -917,6 +927,8 @@ print_board_glyphs:
     pop rsi
     mov cl, 1
     call uni_print_color_seq
+    lea rdi, [board_uni_glyphpad_l]
+    call write_cstr
     ; index do tabulky glyfov: color*6 + (type-1)
     mov eax, r9d
     and eax, COLOR_MASK
@@ -930,6 +942,9 @@ print_board_glyphs:
     shl eax, 2                      ; 4 bajty na zaznam
     add rdi, rax
     call write_cstr
+    lea rdi, [board_uni_glyphpad_r]
+    call write_cstr
+    jmp .next_cell
 .next_cell:
     inc rbx
     cmp rbx, 8
@@ -963,9 +978,11 @@ print_board_glyphs:
     add eax, 'a'
     mov [square_char_buf], al
     mov byte [square_char_buf+1], 0
+    lea rdi, [board_uni_glyphpad_l]
+    call write_cstr
     lea rdi, [square_char_buf]
     call write_cstr
-    lea rdi, [board_uni_ranksp]
+    lea rdi, [board_uni_glyphpad_r]
     call write_cstr
     inc rbx
     cmp rbx, 8
