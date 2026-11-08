@@ -1018,15 +1018,11 @@ uci_alloc_time:
 .phase_done:
     mov [search_limits + 56], rax        ; soft = adjusted per-phase budget
 
-    ; hard cap: 1.5 * soft je povolene len dovtedy, kym nezvysime dostupny cas
-    ; na tento tah. Inak pri movestogo=1/poslednom ťahu sa hard limit preleje cez
-    ; zostatok casu a spustane otocene time-lossy.
-    mov r9, rax
-    imul r9, 3
-    mov rcx, 2
-    xor rdx, rdx
-    mov rax, r9
-    div rcx
+    ; hard cap: 3 * soft je bezpecnostna hranica (nestabilny best move moze
+    ; hladat dalej). Povolene len dovtedy, kym neprekrocime dostupny cas na
+    ; tento tah - inak pri movestogo=1/poslednom tahu sa hard limit preleje cez
+    ; zostatok casu a spustame otocene time-lossy.
+    imul rax, 3
     cmp rax, r8
     jle .hard_store
     mov rax, r8

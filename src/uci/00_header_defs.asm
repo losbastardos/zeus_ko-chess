@@ -252,6 +252,7 @@ uci_iter_start: resq 1    ; mode 2: start aktuálnej ID iterácie (ms)
 uci_iter_dur:   resq 1    ; mode 2: trvanie poslednej dokončenej iterácie (ms)
 uci_move_source: resb 1   ; 0=search, 1=book
 uci_last_iter_move: resd 1 ; posledny tah vrateny search_best_move v ID smycke
+tm_stability:   resd 1    ; mode 2: pocet po sebe iducich ID iteracii s rovnakym best move
 uci_eval_white_tmp: resd 1
 uci_eval_stm_tmp:   resd 1
 uci_evaldiff_saved_dirty: resb 1

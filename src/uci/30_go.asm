@@ -293,6 +293,7 @@ uci_go:
     mov r15, 1                ; current depth
     mov qword [uci_iter_dur], 0
     mov dword [uci_last_iter_move], 0
+    mov dword [tm_stability], 0
     cmp byte [uci_stop_flag], 0
     jne .id_loop              ; stop hned: helperov nespustame
     mov eax, [uci_threads]
@@ -318,11 +319,27 @@ uci_go:
     jne .timegates_ok
     call uci_now_ms
     sub rax, [search_limits + 48]        ; elapsed
-    cmp rax, [search_limits + 56]        ; > soft -> koncime
+    mov r8, rax                          ; elapsed
+    ; stability-aware soft limit: soft * (10 - min(stability,5)) / 10
+    ; (1.0, 0.9, 0.8 ... floor 0.5x base) - stabilny best move = skorsi stop
+    mov ecx, [tm_stability]
+    cmp ecx, 5
+    jle .soft_stab_ok
+    mov ecx, 5
+.soft_stab_ok:
+    mov eax, 10
+    sub eax, ecx
+    mov r9, [search_limits + 56]
+    imul r9, rax
+    mov rax, r9
+    xor rdx, rdx
+    mov ecx, 10
+    div rcx                              ; rax = efektivny soft limit
+    cmp r8, rax                          ; > soft -> koncime
     jg .id_done
     mov rcx, [uci_iter_dur]
     add rcx, rcx
-    add rcx, rax
+    add rcx, r8
     cmp rcx, [search_limits + 64]        ; elapsed + 2*dur > hard -> koncime
     jg .id_done
 .timegates_ok:
@@ -396,6 +413,14 @@ uci_go:
     jl .asp_ready
     ; po 4 retry berieme posledny vysledok (fail-soft)
 .asp_ok:
+    ; stability: po sebe iduce iteracie s rovnakym best move
+    cmp eax, r13d
+    jne .stab_reset
+    inc dword [tm_stability]
+    jmp .stab_done
+.stab_reset:
+    mov dword [tm_stability], 0
+.stab_done:
     mov r13, rax
     mov r14, r15
 
