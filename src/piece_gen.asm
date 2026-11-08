@@ -135,6 +135,45 @@ DEFAULT REL
     call write_cstr
 %endmacro
 
+; ============================================================
+; DUMP_MASK6 - interne makro: vytlaci jednu 6x6 masku (1 bajt/riadok)
+; Vstup: %1 = meno C-stringu, %2 = index masky
+; ============================================================
+%macro DUMP_MASK6 2
+    lea rdi, [%1]
+    call write_cstr
+    mov ebx, %2
+    imul ebx, ebx, 6
+    lea r12, [piece_bitmaps_6]
+    add r12, rbx
+    xor r13d, r13d                  ; y
+%%row:
+    xor r14d, r14d                  ; x
+%%col:
+    movzx edx, byte [r12 + r13]
+    mov ecx, r14d
+    mov r10d, 7
+    sub r10d, ecx
+    bt edx, r10d
+    mov cl, '.'
+    jnc %%store
+    mov cl, '#'
+%%store:
+    mov [gen_dump_buf + r14], cl
+    inc r14d
+    cmp r14d, 6
+    jl %%col
+    mov byte [gen_dump_buf + 6], 10
+    mov byte [gen_dump_buf + 7], 0
+    lea rdi, [gen_dump_buf]
+    call write_cstr
+    inc r13d
+    cmp r13d, 6
+    jl %%row
+    lea rdi, [dump_nl]
+    call write_cstr
+%endmacro
+
 section .data
 
 dump_name_p: db "Pawn:", 10, 0
@@ -150,6 +189,16 @@ dump8_name_b: db "Bishop8:", 10, 0
 dump8_name_r: db "Rook8:", 10, 0
 dump8_name_q: db "Queen8:", 10, 0
 dump8_name_k: db "King8:", 10, 0
+dump6_name_p: db "Pawn6:", 10, 0
+dump6_name_n: db "Knight6:", 10, 0
+dump6_name_b: db "Bishop6:", 10, 0
+dump6_name_r: db "Rook6:", 10, 0
+dump6_name_q: db "Queen6:", 10, 0
+dump6_name_k: db "King6:", 10, 0
+
+; hranice okien pre downsample 16->6: b(k) = (k*16+3)/6
+down6_bounds:
+    db 0, 3, 5, 8, 11, 13, 16
 
 section .bss
 
@@ -158,6 +207,9 @@ piece_bitmaps:  resb 192            ; 6 masiek x 32 B (16x16, P N B R Q K)
 
 global piece_bitmaps_8
 piece_bitmaps_8: resb 48            ; 6 masiek x 8 B (8x8, P N B R Q K)
+
+global piece_bitmaps_6
+piece_bitmaps_6: resb 36            ; 6 masiek x 6 B (6x6, P N B R Q K, bit7 = lavy px)
 
 gen_cur:        resq 1              ; ukazatel na aktualnu masku
 gen_clip:       resd 1              ; max suradnica (7 = 8x8, 15 = 16x16)
@@ -821,8 +873,80 @@ gen_downsample8:
     ret
 
 ; ============================================================
-; piece_gen_dump - tlaci 6 masiek ako #/. (len pri debug=1)
+; gen_downsample6 - majority-vote downsampl 16x16 -> 6x6
+; Vstup: rdi = zdrojova 16x16 maska (32 B), rsi = cielova 6x6 maska (6 B)
+; Cielovy px (x,y) zodpoveda oknu zdroja s hranicami down6_bounds
+; (k*16+3)/6; px = 1 ak je setnuta aspon polovica px okna (zaokruhlene
+; nahor, rovnako ako 2 zo 4 pri downsampl8). Bit 7-x = px x (lavy).
+; Clobber: rax, rcx, rdx, r8, r9, r10, r11, rbx, rbp, r12-r15
 ; ============================================================
+gen_downsample6:
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+    lea r8, [down6_bounds]
+    xor r12d, r12d                  ; y
+.row:
+    movzx r9d, byte [r8 + r12]      ; y0
+    movzx r10d, byte [r8 + r12 + 1] ; y1
+    xor r15d, r15d                  ; out bajt
+    xor r13d, r13d                  ; x
+.col:
+    movzx eax, byte [r8 + r13]      ; x0
+    movzx r11d, byte [r8 + r13 + 1] ; x1
+    ; prejdi okno [x0..x1) x [y0..y1) a spocitaj setnute px
+    xor r14d, r14d                  ; count
+    mov ebx, r9d                    ; sy
+.sy:
+    mov ecx, ebx
+    shl ecx, 1                      ; 2 bajty/riadok
+    movzx edx, word [rdi + rcx]
+    rol dx, 8                       ; bit15 = px0
+    mov ebp, eax                    ; sx = x0
+.sx:
+    mov ecx, 15
+    sub ecx, ebp
+    bt edx, ecx
+    jnc .no_px
+    inc r14d
+.no_px:
+    inc ebp
+    cmp ebp, r11d
+    jb .sx
+    inc ebx
+    cmp ebx, r10d
+    jb .sy
+    ; majorita: count >= ceil(area/2) = (w*h+1)/2
+    mov ecx, r11d
+    sub ecx, eax                    ; w = x1-x0
+    mov ebx, r10d
+    sub ebx, r9d                    ; h = y1-y0
+    imul ecx, ebx                   ; area
+    inc ecx
+    shr ecx, 1                      ; threshold
+    cmp r14d, ecx
+    jb .next
+    mov ecx, 7
+    sub ecx, r13d
+    bts r15d, ecx                   ; ciel bit 7-x = 1
+.next:
+    inc r13d
+    cmp r13d, 6
+    jb .col
+    mov [rsi + r12], r15b
+    inc r12d
+    cmp r12d, 6
+    jb .row
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+    ret
 piece_gen_dump:
     push rbx
     push r12
@@ -840,6 +964,12 @@ piece_gen_dump:
     DUMP_MASK8 dump8_name_r, 3
     DUMP_MASK8 dump8_name_q, 4
     DUMP_MASK8 dump8_name_k, 5
+    DUMP_MASK6 dump6_name_p, 0
+    DUMP_MASK6 dump6_name_n, 1
+    DUMP_MASK6 dump6_name_b, 2
+    DUMP_MASK6 dump6_name_r, 3
+    DUMP_MASK6 dump6_name_q, 4
+    DUMP_MASK6 dump6_name_k, 5
     pop r14
     pop r13
     pop r12
@@ -848,7 +978,7 @@ piece_gen_dump:
 
 ; ============================================================
 ; piece_gen_init - vygeneruje vsetkych 6 figuriek (16px) a z nich
-; supersampled 8px masky (majority-vote downsampl 2x2 -> 1)
+; supersampled 8px a 6px masky (majority-vote downsampl)
 ; ============================================================
 piece_gen_init:
     call gen_pawn
@@ -872,6 +1002,20 @@ piece_gen_init:
     inc ebx
     cmp ebx, 6
     jb .down8
+    xor ebx, ebx
+.down6:
+    mov eax, ebx
+    shl eax, 5
+    lea rdi, [piece_bitmaps]
+    add rdi, rax                    ; zdroj = maska i (32 B)
+    mov eax, ebx
+    imul eax, eax, 6
+    lea rsi, [piece_bitmaps_6]
+    add rsi, rax                    ; ciel = maska i (6 B)
+    call gen_downsample6
+    inc ebx
+    cmp ebx, 6
+    jb .down6
     pop rbx
     cmp byte [debug], 0
     je .done

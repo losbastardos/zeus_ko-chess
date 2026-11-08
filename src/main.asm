@@ -1195,7 +1195,8 @@ _start:
     call apply_cmdline_overrides
 
     ; unicode rezim textovej sachovnice
-    ; (0 = ASCII, 1 = unicode bitmap 8px, 2 = 16px, 3 = fontove glyfy)
+    ; (0 = ASCII, 1 = unicode bitmap 8px, 2 = 16px, 3 = fontove glyfy,
+    ;  4 = velke bitmapove figurky 6x6)
     lea rdi, [key_unicode_pieces]
     lea rsi, [default_unicode_pieces]
     call config_get
@@ -1205,9 +1206,9 @@ _start:
     jns .up_nonneg
     xor rax, rax
 .up_nonneg:
-    cmp rax, 3
+    cmp rax, 4
     jle .up_store
-    mov rax, 3
+    mov rax, 4
 .up_store:
     mov [unicode_pieces], al
 

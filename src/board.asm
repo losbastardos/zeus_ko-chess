@@ -71,6 +71,8 @@ board_uni_glyphpad_l:
     db " ", 0
 board_uni_glyphpad_r:
     db "  ", 0
+board_uni_sp3:
+    db "   ", 0
 
 section .text
 
@@ -88,7 +90,7 @@ extern rank_char_buf, square_char_buf
 extern print_newline, print_panel_line
 extern write_cstr
 extern unicode_pieces, light_col, dark_col
-extern piece_bitmaps, piece_bitmaps_8
+extern piece_bitmaps, piece_bitmaps_8, piece_bitmaps_6
 
 ; ============================================================
 ; print_piece_cell - vypise jedno policko ako | X |
@@ -344,6 +346,8 @@ print_board:
     je .ascii
     cmp byte [unicode_pieces], 3
     je print_board_glyphs
+    cmp byte [unicode_pieces], 4
+    je print_board_big
     jmp print_board_unicode
 .ascii:
     push rbx
@@ -567,8 +571,8 @@ uni_print_color_seq:
 ; uni_print_cell_row - vypise jeden textovy riadok policka
 ; (2 vertikalne pixel rady cez jeden riadok '▀' znakov)
 ; Vstup: rdi = piece (0 = prazdne), esi = farba policka 0xRRGGBB,
-;        edx = textovy riadok r (0..scale/2-1), ecx = scale (8 alebo 16)
-; 8px rezim: cita precomputed 8x8 masku (majority-vote downsampl zo 16x16)
+;        edx = textovy riadok r (0..scale/2-1), ecx = scale (6, 8 alebo 16)
+; 8px/6px rezim: cita precomputed masku (majority-vote downsampl zo 16x16)
 ; ============================================================
 uni_print_cell_row:
     push rbx
@@ -610,12 +614,24 @@ uni_print_cell_row:
     dec eax
     cmp r15d, 16
     je .scale16
+    cmp r15d, 6
+    je .scale6
     ; ---- 8px: 8x8 maska z majority-vote downsamplu (1 bajt/riadok) ----
     shl eax, 3
     lea r10, [piece_bitmaps_8]
     add r10, rax                    ; r10 = maska figurky (8 B)
     movzx r12d, byte [r10 + rdx*2]          ; horny pixel riadok = r 2r
     movzx ebx, byte [r10 + rdx*2 + 1]       ; dolny pixel riadok = 2r+1
+    jmp .cols
+.scale6:
+    ; ---- 6px: 6x6 maska (1 bajt/riadok, bit7 = lavy px) ----
+    imul eax, eax, 6
+    lea r10, [piece_bitmaps_6]
+    add r10, rax                    ; r10 = maska figurky (6 B)
+    movzx r12d, byte [r10 + rdx*2]          ; horny pixel riadok 2r
+    movzx ebx, byte [r10 + rdx*2 + 1]       ; dolny pixel riadok 2r+1
+    shr r12d, 2                     ; px x je v bitu 7-x -> posun na 5-x
+    shr ebx, 2
     jmp .cols
 .scale16:
     shl eax, 5
@@ -1025,6 +1041,127 @@ print_board_glyphs:
     lea rdi, [square_char_buf]
     call write_cstr
     lea rdi, [board_uni_glyphpad_r]
+    call write_cstr
+    inc rbx
+    cmp rbx, 8
+    jl .fl_loop
+    pop rbx
+    ret
+
+; ============================================================
+; print_board_big - velke bitmapove figurky (unicode_pieces=4)
+; Policko = 6 znakov x 3 textove riadky cez '▀' polobloky
+; (6x6 px maska, kazdy textovy riadok nesie 2 pixel rady;
+; pri pomere znaku 2:1 je policko 6x6 jednotiek = stvorec).
+; Rank = 3 textove riadky, cislo ranku len na prostrednom.
+; Sirka: gutter 2 + 8x6 = 50 znakov. Pismena a-h len pod sachovnicou.
+; Podporuje board_flip. Panel sa netlaci.
+; ============================================================
+print_board_big:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    call print_newline
+
+    xor r12, r12                    ; display riadok dosky 0..7 (0 = hore)
+.rank_loop:
+    mov rax, 7
+    sub rax, r12
+    cmp byte [board_flip], 0
+    je .rank_ok
+    mov rax, r12
+.rank_ok:
+    mov r13, rax                    ; r13 = realny rank 0..7
+
+    xor r14, r14                    ; textovy riadok ranku 0..2
+.row_loop:
+    ; cislo ranku len na prostrednom riadku
+    cmp r14, 1
+    jne .no_ranknum
+    mov eax, r13d
+    add eax, '1'
+    mov [rank_char_buf], al
+    mov byte [rank_char_buf+1], 0
+    lea rdi, [rank_char_buf]
+    call write_cstr
+    lea rdi, [board_uni_ranksp]
+    call write_cstr
+    jmp .num_done
+.no_ranknum:
+    lea rdi, [board_uni_rankpad]
+    call write_cstr
+.num_done:
+
+    xor rbx, rbx                    ; display stlpec 0..7
+.cell_loop:
+    mov rax, rbx
+    cmp byte [board_flip], 0
+    je .file_ok
+    mov rax, 7
+    sub rax, rbx
+.file_ok:
+    mov r15, rax                    ; r15 = realny file
+    mov rax, r13
+    shl rax, 3
+    add rax, r15
+    call pos_piece_at_sq_bb         ; piece byte (rax)
+    mov rdi, rax
+    ; farba policka
+    mov eax, r13d
+    add eax, r15d
+    and eax, 1
+    jz .dark_sq
+    mov esi, [light_col]
+    jmp .sq_ok
+.dark_sq:
+    mov esi, [dark_col]
+.sq_ok:
+    mov edx, r14d                   ; textovy riadok
+    mov ecx, 6                      ; scale 6px
+    call uni_print_cell_row
+    inc rbx
+    cmp rbx, 8
+    jl .cell_loop
+    lea rdi, [board_uni_reset]
+    call write_cstr
+    call print_newline
+    inc r14
+    cmp r14, 3
+    jl .row_loop
+    inc r12
+    cmp r12, 8
+    jl .rank_loop
+    call .print_letters
+    call print_newline
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+.print_letters:
+    push rbx
+    lea rdi, [board_uni_rankpad]
+    call write_cstr
+    xor rbx, rbx
+.fl_loop:
+    mov rax, rbx
+    cmp byte [board_flip], 0
+    je .fl_ok
+    mov rax, 7
+    sub rax, rbx
+.fl_ok:
+    add eax, 'a'
+    mov [square_char_buf], al
+    mov byte [square_char_buf+1], 0
+    lea rdi, [board_uni_rankpad]    ; 2 medzery: pismeno na poziciu 2 zo 6
+    call write_cstr
+    lea rdi, [square_char_buf]
+    call write_cstr
+    lea rdi, [board_uni_sp3]        ; 3 medzery
     call write_cstr
     inc rbx
     cmp rbx, 8
