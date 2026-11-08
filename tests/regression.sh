@@ -28,7 +28,6 @@ cleanup() {
 trap cleanup EXIT
 
 sed -i 's/^language=.*/language=en/' chess.ini
-sed -i 's/^unicode_pieces=.*/unicode_pieces=0/' chess.ini
 
 out1="$(mktemp)"
 printf '2\n\nexit\n' | "$ENGINE_PATH" >"$out1"

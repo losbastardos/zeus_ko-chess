@@ -198,10 +198,7 @@ extern bench_str_pct, bench_str_pct_end
 extern book_rating_flag
 extern config_filename, key_book, default_book, key_eco, default_eco, key_search_depth, default_search_depth, key_debug, default_debug
 extern key_language, default_language, key_syzygy, default_syzygy, key_book_mode, default_book_mode, key_book_search_depth, default_book_search_depth, key_eval_mode, default_eval_mode, key_nnue_file, default_nnue_file, key_threads, default_threads
-extern key_unicode_pieces, default_unicode_pieces, unicode_pieces
-extern key_light_square, default_light_square, key_dark_square, default_dark_square
-extern light_col, dark_col, parse_color, config_buf, cmdline_argc, cmdline_argv
-extern piece_gen_init
+extern config_buf, cmdline_argc, cmdline_argv
 extern eco_load, eco_test_print
 extern lang_file_en, lang_file_sk
 extern lkey_menu_title, ldef_menu_title
@@ -1194,40 +1191,6 @@ _start:
     ; cmdline override: argumenty tvaru key=value prepisu hodnoty v chess.ini
     call apply_cmdline_overrides
 
-    ; unicode rezim textovej sachovnice
-    ; (0 = ASCII, 1 = unicode bitmap 8px, 2 = 16px, 3 = fontove glyfy,
-    ;  4 = velke bitmapove figurky 6x6)
-    lea rdi, [key_unicode_pieces]
-    lea rsi, [default_unicode_pieces]
-    call config_get
-    mov rsi, rax
-    call parse_int
-    test rax, rax
-    jns .up_nonneg
-    xor rax, rax
-.up_nonneg:
-    cmp rax, 4
-    jle .up_store
-    mov rax, 4
-.up_store:
-    mov [unicode_pieces], al
-
-    ; farby policok pre unicode rezim (parse_color vrati 0xFFRRGGBB;
-    ; gfx_init si ich pri vstupe do gfx rezimu nacita znovu)
-    lea rdi, [key_light_square]
-    lea rsi, [default_light_square]
-    call config_get
-    mov rdi, rax
-    call parse_color
-    mov [light_col], eax
-
-    lea rdi, [key_dark_square]
-    lea rsi, [default_dark_square]
-    call config_get
-    mov rdi, rax
-    call parse_color
-    mov [dark_col], eax
-
     ; nacitaj opening book
     lea rdi, [key_book]
     lea rsi, [default_book]
@@ -1286,10 +1249,6 @@ _start:
     call parse_int
     test rax, rax
     setnz byte [debug]
-
-    ; proceduralne bitmapy figuriek (farbovo neutralne masky 16x16);
-    ; pri debug=1 sa hned vytlacia ako #/. dump
-    call piece_gen_init
 
     ; nacitaj book_mode (0 = instant, 1 = vyber knizneho tahu searchom)
     lea rdi, [key_book_mode]

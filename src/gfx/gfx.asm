@@ -25,9 +25,9 @@ msg_gfx_sysfs:
     db "Chyba: nepodarilo sa nacitat rozlisenie framebufferu.", 10, 0
 msg_gfx_sysfs_len equ $ - msg_gfx_sysfs - 1
 
-msg_gfx_piece:
+msg_gfx_bmp:
     db "Chyba: nepodarilo sa nacitat BMP figurka.", 10, 0
-msg_gfx_piece_len equ $ - msg_gfx_piece - 1
+msg_gfx_bmp_len equ $ - msg_gfx_bmp - 1
 
 msg_gfx_mouse:
     db "Chyba: nepodarilo sa otvorit mys.", 10, 0
@@ -50,7 +50,6 @@ sysfs_bpp:
 section .text
 
 global gfx_init, gfx_close, gfx_run, gfx_refresh, gfx_square_from_xy
-global parse_color
 
 extern config_get, parse_int
 extern generate_all_moves, parse_user_move, find_move, apply_move, update_position_state, compute_hash, record_hash
@@ -63,15 +62,16 @@ extern board, side, board_flip, move_list, move_count, search_depth, move_buf, m
 extern fb_ptr, fb_size, fb_width, fb_height, fb_bpp, fb_stride, fb_bytes
 extern square_size, board_offset_x, board_offset_y
 extern light_col, dark_col, highlight_col, bg_col
-extern mouse_device, mouse_fd, mouse_x, mouse_y, mouse_btn_left
+extern assets_path, mouse_device, mouse_fd, mouse_x, mouse_y, mouse_btn_left
 extern gfx_mode, gfx_initialized, gfx_highlight_sq
-extern gfx_fb_fd
-extern piece_bitmaps
+extern bmp_ptrs, bmp_sizes, bmp_widths, bmp_heights, gfx_fb_fd
+extern piece_name_ptrs
 extern key_framebuffer, default_framebuffer
 extern key_square_size, default_square_size
 extern key_light_square, default_light_square
 extern key_dark_square, default_dark_square
 extern key_highlight, default_highlight
+extern key_assets, default_assets
 extern key_mouse, default_mouse
 
 ; ============================================================
@@ -111,6 +111,36 @@ str_copy:
     pop rax
     ret
 
+; ============================================================
+; str_append - pripoji C-string z rsi na koniec retazca v rdi
+; ============================================================
+str_append:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    mov rcx, rdi
+.len1:
+    mov al, [rcx]
+    test al, al
+    jz .copy2
+    inc rcx
+    jmp .len1
+.copy2:
+    xor rdx, rdx
+.loop:
+    mov al, [rsi + rdx]
+    mov [rcx + rdx], al
+    test al, al
+    jz .done
+    inc rdx
+    jmp .loop
+.done:
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
 
 ; ============================================================
 ; parse_int_ptr - obal na parse_int (rdi -> rsi)
@@ -466,87 +496,246 @@ draw_rect:
     ret
 
 ; ============================================================
-; draw_bmp - nakresli figurku z piece_bitmaps (16x16, 1bpp)
-; s nearest-neighbor upscale na 60x60 (rovnaky rozmer ako stare BMP).
-; Vstup: r12 = x, r13 = y, r14 = index 0..11 (0-5 biele, 6-11 cierne)
-; Volajuci pushne r12-r15, draw_bmp moze klovberovat vsetky registre.
-; Bit = 1 -> farba figurky (biela 0xF0F0F0 / cierna 0x202020),
-; bit = 0 -> skip (necha sa pozadie policka).
+; draw_bmp - blitne BMP figurku na framebuffer
+; Vstup: r12 = x, r13 = y, r14 = index BMP (0..11)
 ; ============================================================
 draw_bmp:
-    ; maska + farba figurky
-    mov eax, r14d
-    mov r10d, 0xFF000000            ; biela figurka (BGRA)
-    or r10d, 0x00F0F0F0
-    cmp eax, 6
-    jb .col_ok
-    sub eax, 6
-    mov r10d, 0xFF202020            ; cierna figurka
-.col_ok:
-    shl eax, 5
-    lea rsi, [piece_bitmaps]
-    add rsi, rax                    ; rsi = maska (32 B)
-    ; fb origin = fb_ptr + y*stride + x*fb_bytes
-    mov r11, [fb_ptr]
-    mov eax, [fb_stride]
-    mov ebx, r13d
-    imul ebx, eax
-    add r11, rbx
-    mov eax, [fb_bytes]
-    imul eax, r12d
-    add r11, rax                    ; r11 = fb ptr na (x, y)
-    xor r8d, r8d                    ; dy
-    xor ecx, ecx                    ; src_y
-    xor ebx, ebx                    ; acc_y
-.row:
-    cmp r8d, 60
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+
+    lea rsi, [bmp_ptrs]
+    mov rdi, [rsi + r14*8]
+    test rdi, rdi
+    jz .done
+
+    mov ebx, [bmp_widths + r14*4]
+    mov ecx, [bmp_heights + r14*4]
+
+    ; BMP rows are bottom-up
+    xor r8, r8
+.row_loop:
+    cmp r8d, ecx
     jge .done
-    xor r9d, r9d                    ; dx
-    xor edi, edi                    ; src_x
-    xor eax, eax                    ; acc_x
-.col:
-    cmp r9d, 60
+
+    mov r9d, ecx
+    dec r9d
+    sub r9d, r8d
+
+    mov eax, ebx
+    imul eax, 3
+    add eax, 3
+    and eax, 0xFFFFFFFC
+    mov r10d, eax
+
+    mov eax, r9d
+    mul r10d
+    lea rsi, [rdi + 54]
+    add rsi, rax
+
+    mov r15, [fb_ptr]
+    mov eax, [fb_stride]
+    mov r11d, r13d
+    add r11d, r8d
+    mul r11d
+    add r15, rax
+    mov eax, r12d
+    mov r11d, [fb_bytes]
+    mul r11d
+    add r15, rax
+
+    xor r9, r9
+.col_loop:
+    cmp r9d, ebx
     jge .next_row
-    ; bit = mask[src_y][src_x]
-    mov edx, edi
-    shr edx, 3
-    movzx r15d, byte [rsi + rdx]
-    mov edx, edi
-    and edx, 7
-    mov r14d, 7
-    sub r14d, edx
-    bt r15d, r14d
-    jnc .skip
-    mov edx, [fb_bytes]
-    imul edx, r9d
-    mov [r11 + rdx], r10d
+
+    mov rcx, r9
+    shl rcx, 1
+    add rcx, r9
+
+    movzx rax, byte [rsi + rcx + 0]
+    movzx rdx, byte [rsi + rcx + 1]
+    movzx r10, byte [rsi + rcx + 2]
+
+    cmp rax, 0xFF
+    jne .write
+    cmp rdx, 0
+    jne .write
+    cmp r10, 0xFF
+    jne .write
+    jmp .skip
+
+.write:
+    shl r10, 16
+    shl rdx, 8
+    or rax, rdx
+    or rax, r10
+    mov ebx, 0xFF000000
+    or rax, rbx
+    mov [r15 + r9*4], eax
+
 .skip:
-    inc r9d
-    add eax, 16
-    cmp eax, 60
-    jl .col
-    sub eax, 60
-    inc edi                         ; src_x++ (acc_x >= 60)
-    jmp .col
+    inc r9
+    jmp .col_loop
+
 .next_row:
-    mov r15d, [fb_stride]
-    add r11, r15
-    inc r8d
-    add ebx, 16
-    cmp ebx, 60
-    jl .row
-    sub ebx, 60
-    add rsi, 2                      ; dalsi zdrojovy riadok masky (src_y++)
-    jmp .row
+    inc r8
+    jmp .row_loop
+
 .done:
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
     ret
 
 ; ============================================================
-; load_all_bmps - masky figuriek sa generuju pri init
-; (piece_gen_init), nacitavat nic netreba -> vzdy uspech
+; load_bmp_index - nacita a nacachuje BMP figurku
+; Vstup: r12 = index 0..11
+; ============================================================
+load_bmp_index:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+
+    sub rsp, 128
+    mov rdi, rsp
+    lea rsi, [assets_path]
+    mov rcx, 127
+    call str_copy
+
+    mov rdi, rsp
+.len:
+    mov al, [rdi]
+    test al, al
+    jz .check_slash
+    inc rdi
+    jmp .len
+.check_slash:
+    mov al, [rdi - 1]
+    cmp al, '/'
+    je .append
+    mov byte [rdi], '/'
+    mov byte [rdi + 1], 0
+.append:
+    lea rdi, [rsp]
+    lea rsi, [piece_name_ptrs]
+    mov rax, [rsi + r12*8]
+    mov rsi, rax
+    call str_append
+
+    mov rdi, rsp
+    mov rax, 2
+    xor rsi, rsi
+    syscall
+    cmp rax, 0
+    jl .error
+    mov r13, rax
+
+    mov rax, 8
+    mov rdi, r13
+    xor rsi, rsi
+    mov rdx, 2
+    syscall
+    cmp rax, 0
+    jle .close_error
+    mov r14, rax
+
+    mov rax, 8
+    mov rdi, r13
+    xor rsi, rsi
+    xor rdx, rdx
+    syscall
+
+    mov rax, 9
+    xor rdi, rdi
+    mov rsi, r14
+    mov dl, 1
+    mov r10, 2
+    mov r8, r13
+    xor r9, r9
+    syscall
+    cmp rax, 0
+    jl .close_error
+    mov r15, rax
+
+    mov rax, 3
+    mov rdi, r13
+    syscall
+
+    movzx rax, byte [r15]
+    cmp al, 'B'
+    jne .error
+    movzx rax, byte [r15 + 1]
+    cmp al, 'M'
+    jne .error
+
+    mov eax, [r15 + 0x12]
+    mov [bmp_widths + r12*4], eax
+    mov eax, [r15 + 0x16]
+    test eax, eax
+    jns .height_ok
+    neg eax
+.height_ok:
+    mov [bmp_heights + r12*4], eax
+
+    lea rsi, [bmp_ptrs]
+    mov [rsi + r12*8], r15
+    lea rsi, [bmp_sizes]
+    mov [rsi + r12*8], r14
+
+    add rsp, 128
+    xor rax, rax
+    jmp .done
+
+.close_error:
+    mov rax, 3
+    mov rdi, r13
+    syscall
+.error:
+    add rsp, 128
+    mov rax, 1
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; ============================================================
+; load_all_bmps - nacita vsetkych 12 figurok
 ; ============================================================
 load_all_bmps:
-    xor rax, rax
+    push r12
+    xor r12, r12
+.loop:
+    cmp r12, 12
+    jge .done
+    call load_bmp_index
+    test rax, rax
+    jnz .fail
+    inc r12
+    jmp .loop
+.fail:
+    mov rax, 1
+.done:
+    pop r12
     ret
 
 ; ============================================================
@@ -559,13 +748,31 @@ gfx_close:
 
     mov rax, [fb_ptr]
     test rax, rax
-    jz .close_mouse
+    jz .bmps
     mov r12, rax
     mov rax, 11
     mov rdi, r12
     mov rsi, [fb_size]
     syscall
     mov qword [fb_ptr], 0
+
+.bmps:
+    xor r12, r12
+.bmp_loop:
+    cmp r12, 12
+    jge .close_mouse
+    lea rbx, [bmp_ptrs]
+    mov rax, [rbx + r12*8]
+    test rax, rax
+    jz .next_bmp
+    mov rdi, rax
+    mov rsi, [bmp_sizes + r12*8]
+    mov rax, 11
+    syscall
+    mov qword [rbx + r12*8], 0
+.next_bmp:
+    inc r12
+    jmp .bmp_loop
 
 .close_mouse:
     mov rax, [mouse_fd]
@@ -594,6 +801,15 @@ gfx_init:
     mov byte [gfx_initialized], 0
     mov byte [gfx_mode], 0
     mov byte [gfx_highlight_sq], 255
+
+    ; assets path
+    lea rdi, [key_assets]
+    lea rsi, [default_assets]
+    call config_get
+    lea rdi, [assets_path]
+    mov rsi, rax
+    mov rcx, 63
+    call str_copy
 
     ; mouse device
     lea rdi, [key_mouse]
@@ -674,7 +890,7 @@ gfx_init:
     ; load bmps
     call load_all_bmps
     test rax, rax
-    jnz .piece_error
+    jnz .bmp_error
 
     ; init mouse
     call mouse_init
@@ -686,9 +902,9 @@ gfx_init:
     xor rax, rax
     jmp .done
 
-.piece_error:
-    mov rdi, msg_gfx_piece
-    mov rsi, msg_gfx_piece_len
+.bmp_error:
+    mov rdi, msg_gfx_bmp
+    mov rsi, msg_gfx_bmp_len
     call print_msg
     call gfx_close
     mov rax, 1
@@ -838,11 +1054,11 @@ gfx_draw_board:
     add eax, ecx
 
     mov r8d, [square_size]
-    sub r8d, 60                     ; figurky sa kreslia ako 60x60 (upscale 16->60)
+    sub r8d, [bmp_widths + eax*4]
     shr r8d, 1
     add r8d, r10d
     mov r9d, [square_size]
-    sub r9d, 60
+    sub r9d, [bmp_heights + eax*4]
     shr r9d, 1
     add r9d, r11d
 

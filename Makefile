@@ -10,7 +10,7 @@ TARGET_STATIC = chess-static
 SRCDIR      = src
 OBJDIR      = obj
 
-SRCS        = main.asm board.asm piece_gen.asm move.asm position.asm movegen.asm legal.asm io.asm data.asm eval.asm search.asm see.asm hash.asm tt.asm book.asm eco.asm tb.asm nnue.asm uci.asm smp.asm panel.asm fen.asm pgn.asm suite.asm gfx/config.asm gfx/gfx.asm gfx/mouse.asm gfx/sdl.asm
+SRCS        = main.asm board.asm move.asm position.asm movegen.asm legal.asm io.asm data.asm eval.asm search.asm see.asm hash.asm tt.asm book.asm eco.asm tb.asm nnue.asm uci.asm smp.asm panel.asm fen.asm pgn.asm suite.asm gfx/config.asm gfx/gfx.asm gfx/mouse.asm gfx/sdl.asm
 
 SRCS_STATIC = $(filter-out gfx/sdl.asm,$(SRCS)) gfx/sdl_stub.asm
 
