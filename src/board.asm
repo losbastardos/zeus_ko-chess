@@ -837,17 +837,20 @@ print_board_unicode:
 
 ; ============================================================
 ; print_board_glyphs - sachovnica z fontovych sachovych glyfov
-; (unicode_pieces=3): kazde policko = 4 znaky, 1 textovy riadok na
-; rank, glyf centrovany v policku (" X  "). Plna filled sada
-; (U+265A-5F) pre obe farby; farba figurky = ANSI fg (biela/cierna),
-; bg = farba policka (aj padding medzier).
+; (unicode_pieces=3): kazde policko = 4 znaky x 2 textove riadky.
+; Horny riadok: cislo ranku + policka " X  " s glyfom; spodny riadok:
+; prazdny gutter + 8x4 znaky cistej bg farby policka (ziaden glyf).
+; Pri pomere znaku 2:1 je policko 8x4 jednotiek = stvorec.
+; Plna filled sada (U+265A-5F) pre obe farby; farba figurky = ANSI fg
+; (biela/cierna), bg = farba policka (aj padding medzier).
 ; Podporuje board_flip. Riadok: "8 " + 8x4 znaky + ESC[0m
-; (2 + 32 = 34 znakov) + pismena a-h nad/pod sachovnicou.
+; (2 + 32 = 34 znakov); sachovnica = 16 textovych riadkov + pismena.
 ; ============================================================
 print_board_glyphs:
     push rbx
     push r12
     push r13
+    push r14
     push r15
     call print_newline
     call .print_letters
@@ -862,15 +865,28 @@ print_board_glyphs:
     mov rax, r12
 .rank_ok:
     mov r13, rax                    ; r13 = realny rank 0..7
-    ; cislo ranku v lavo
+    ; cislo ranku do bufferu (tlaci sa na hornom textovom riadku)
     mov eax, r13d
     add eax, '1'
     mov [rank_char_buf], al
     mov byte [rank_char_buf+1], 0
+
+    xor r14, r14                    ; textovy riadok ranku 0 = glyf, 1 = cista bg
+.row_loop:
+    ; cislo ranku len na hornom riadku, spodny ma prazdny gutter
+    test r14, r14
+    jnz .no_ranknum
     lea rdi, [rank_char_buf]
     call write_cstr
     lea rdi, [board_uni_ranksp]
     call write_cstr
+    jmp .num_done
+.no_ranknum:
+    lea rdi, [board_uni_rankpad]
+    call write_cstr
+.num_done:
+    cmp r14, 1
+    je .bg_row
 
     xor rbx, rbx                    ; display stlpec 0..7
 .cell_loop:
@@ -898,7 +914,7 @@ print_board_glyphs:
 .sq_ok:
     test r9d, r9d
     jnz .piece
-    ; prazdne policko: fg=bg=farba policka + 3 medzery
+    ; prazdne policko: fg=bg=farba policka + 4 medzery
     push rsi
     mov cl, 0
     call uni_print_color_seq
@@ -939,15 +955,51 @@ print_board_glyphs:
     inc rbx
     cmp rbx, 8
     jl .cell_loop
+    jmp .row_end
+
+.bg_row:
+    ; spodny riadok policka: 4 znaky cistej bg farby (bez glyfu)
+    xor rbx, rbx
+.bg_cell_loop:
+    mov rax, rbx
+    cmp byte [board_flip], 0
+    je .bg_file_ok
+    mov rax, 7
+    sub rax, rbx
+.bg_file_ok:
+    mov r15, rax                    ; r15 = realny file
+    ; farba policka
+    mov eax, r13d
+    add eax, r15d
+    and eax, 1
+    jz .bg_dark
+    mov esi, [light_col]
+    jmp .bg_sq_ok
+.bg_dark:
+    mov esi, [dark_col]
+.bg_sq_ok:
+    mov cl, 1
+    call uni_print_color_seq
+    lea rdi, [board_uni_glyphempty]
+    call write_cstr
+    inc rbx
+    cmp rbx, 8
+    jl .bg_cell_loop
+
+.row_end:
     lea rdi, [board_uni_reset]
     call write_cstr
     call print_newline
+    inc r14
+    cmp r14, 2
+    jl .row_loop
     inc r12
     cmp r12, 8
     jl .rank_loop
     call .print_letters
     call print_newline
     pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
