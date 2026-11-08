@@ -63,14 +63,14 @@ board_glyphs:
     db 0xE2,0x99,0x9B,0          ; Q ♛
     db 0xE2,0x99,0x9A,0          ; K ♚
 
-; glyph rezim: kazde policko = 3 znaky, glyf centrovany (" X ");
-; prazdne policko = 3 medzery. Medzery nesu bg farbu policka.
+; glyph rezim: kazde policko = 4 znaky, glyf centrovany (" X  ");
+; prazdne policko = 4 medzery. Medzery nesu bg farbu policka.
 board_uni_glyphempty:
-    db "   ", 0
+    db "    ", 0
 board_uni_glyphpad_l:
     db " ", 0
 board_uni_glyphpad_r:
-    db " ", 0
+    db "  ", 0
 
 section .text
 
@@ -837,19 +837,17 @@ print_board_unicode:
 
 ; ============================================================
 ; print_board_glyphs - sachovnica z fontovych sachovych glyfov
-; (unicode_pieces=3): kazde policko = 3 znaky x 2 textove riadky,
-; glyf centrovany a zopakovany na oboch riadkoch policka (dvojita
-; vyska figurky je pri pomere znaku 2:1 ~stvorcovy siluetu).
-; Plna filled sada (U+265A-5F) pre obe farby; farba figurky = ANSI fg
-; (biela/cierna), bg = farba policka (aj padding medzier).
-; Podporuje board_flip. Riadok: "8 " + 8x3 znaky + ESC[0m
-; (2 + 24 = 26 znakov); sachovnica = 16 textovych riadkov + pismena.
+; (unicode_pieces=3): kazde policko = 4 znaky, 1 textovy riadok na
+; rank, glyf centrovany v policku (" X  "). Plna filled sada
+; (U+265A-5F) pre obe farby; farba figurky = ANSI fg (biela/cierna),
+; bg = farba policka (aj padding medzier).
+; Podporuje board_flip. Riadok: "8 " + 8x4 znaky + ESC[0m
+; (2 + 32 = 34 znakov) + pismena a-h nad/pod sachovnicou.
 ; ============================================================
 print_board_glyphs:
     push rbx
     push r12
     push r13
-    push r14
     push r15
     call print_newline
     call .print_letters
@@ -864,26 +862,15 @@ print_board_glyphs:
     mov rax, r12
 .rank_ok:
     mov r13, rax                    ; r13 = realny rank 0..7
-    ; cislo ranku do bufferu (tlaci sa na prvom textovom riadku)
+    ; cislo ranku v lavo
     mov eax, r13d
     add eax, '1'
     mov [rank_char_buf], al
     mov byte [rank_char_buf+1], 0
-
-    xor r14, r14                    ; textovy riadok ranku 0..1
-.row_loop:
-    ; cislo ranku len na prvom riadku, druhy ma prazdny gutter
-    test r14, r14
-    jnz .no_ranknum
     lea rdi, [rank_char_buf]
     call write_cstr
     lea rdi, [board_uni_ranksp]
     call write_cstr
-    jmp .num_done
-.no_ranknum:
-    lea rdi, [board_uni_rankpad]
-    call write_cstr
-.num_done:
 
     xor rbx, rbx                    ; display stlpec 0..7
 .cell_loop:
@@ -955,16 +942,12 @@ print_board_glyphs:
     lea rdi, [board_uni_reset]
     call write_cstr
     call print_newline
-    inc r14
-    cmp r14, 2
-    jl .row_loop
     inc r12
     cmp r12, 8
     jl .rank_loop
     call .print_letters
     call print_newline
     pop r15
-    pop r14
     pop r13
     pop r12
     pop rbx
