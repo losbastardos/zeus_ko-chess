@@ -53,21 +53,15 @@ board_uni_ranksp:
 board_uni_rankpad:
     db "  ", 0
 
-; sachove glyfy (UTF-8: E2 99 xx), poradie wP,wN,wB,wR,wQ,wK,bP..bK
-; biele su outline (U+2654-59), cierne filled (U+265A-5F)
+; sachove glyfy (UTF-8: E2 99 xx) - jedna filled sada (U+265A-5F)
+; pre obe farby; farba figurky je len ANSI fg (biela/cierna), index = typ-1.
 board_glyphs:
-    db 0xE2,0x99,0x99,0          ; wP ♙
-    db 0xE2,0x99,0x98,0          ; wN ♘
-    db 0xE2,0x99,0x97,0          ; wB ♗
-    db 0xE2,0x99,0x96,0          ; wR ♖
-    db 0xE2,0x99,0x95,0          ; wQ ♕
-    db 0xE2,0x99,0x94,0          ; wK ♔
-    db 0xE2,0x99,0x9F,0          ; bP ♟
-    db 0xE2,0x99,0x9E,0          ; bN ♞
-    db 0xE2,0x99,0x9D,0          ; bB ♝
-    db 0xE2,0x99,0x9C,0          ; bR ♜
-    db 0xE2,0x99,0x9B,0          ; bQ ♛
-    db 0xE2,0x99,0x9A,0          ; bK ♚
+    db 0xE2,0x99,0x9F,0          ; P ♟
+    db 0xE2,0x99,0x9E,0          ; N ♞
+    db 0xE2,0x99,0x9D,0          ; B ♝
+    db 0xE2,0x99,0x9C,0          ; R ♜
+    db 0xE2,0x99,0x9B,0          ; Q ♛
+    db 0xE2,0x99,0x9A,0          ; K ♚
 
 ; glyph rezim: kazde policko = 3 znaky, glyf centrovany (" X ");
 ; prazdne policko = 3 medzery. Medzery nesu bg farbu policka.
@@ -843,16 +837,19 @@ print_board_unicode:
 
 ; ============================================================
 ; print_board_glyphs - sachovnica z fontovych sachovych glyfov
-; (unicode_pieces=3): kazde policko = 3 znaky (" X "), 8 riadkov.
-; Biele figurky = outline glyfy (U+2654-59), cierne = filled
-; (U+265A-5F); fg = farba figurky, bg = farba policka (aj padding).
+; (unicode_pieces=3): kazde policko = 3 znaky x 2 textove riadky,
+; glyf centrovany a zopakovany na oboch riadkoch policka (dvojita
+; vyska figurky je pri pomere znaku 2:1 ~stvorcovy siluetu).
+; Plna filled sada (U+265A-5F) pre obe farby; farba figurky = ANSI fg
+; (biela/cierna), bg = farba policka (aj padding medzier).
 ; Podporuje board_flip. Riadok: "8 " + 8x3 znaky + ESC[0m
-; (2 + 24 = 26 znakov; pri pomere znaku 2:1 ~stvorcovy dojem).
+; (2 + 24 = 26 znakov); sachovnica = 16 textovych riadkov + pismena.
 ; ============================================================
 print_board_glyphs:
     push rbx
     push r12
     push r13
+    push r14
     push r15
     call print_newline
     call .print_letters
@@ -867,15 +864,26 @@ print_board_glyphs:
     mov rax, r12
 .rank_ok:
     mov r13, rax                    ; r13 = realny rank 0..7
-    ; cislo ranku v lavo
+    ; cislo ranku do bufferu (tlaci sa na prvom textovom riadku)
     mov eax, r13d
     add eax, '1'
     mov [rank_char_buf], al
     mov byte [rank_char_buf+1], 0
+
+    xor r14, r14                    ; textovy riadok ranku 0..1
+.row_loop:
+    ; cislo ranku len na prvom riadku, druhy ma prazdny gutter
+    test r14, r14
+    jnz .no_ranknum
     lea rdi, [rank_char_buf]
     call write_cstr
     lea rdi, [board_uni_ranksp]
     call write_cstr
+    jmp .num_done
+.no_ranknum:
+    lea rdi, [board_uni_rankpad]
+    call write_cstr
+.num_done:
 
     xor rbx, rbx                    ; display stlpec 0..7
 .cell_loop:
@@ -929,15 +937,10 @@ print_board_glyphs:
     call uni_print_color_seq
     lea rdi, [board_uni_glyphpad_l]
     call write_cstr
-    ; index do tabulky glyfov: color*6 + (type-1)
+    ; index do tabulky glyfov: typ-1 (filled sada spolocna pre obe farby)
     mov eax, r9d
-    and eax, COLOR_MASK
-    shr eax, 3
-    imul eax, eax, 6
-    mov edx, r9d
-    and edx, PIECE_MASK
-    dec edx
-    add eax, edx
+    and eax, PIECE_MASK
+    dec eax
     lea rdi, [board_glyphs]
     shl eax, 2                      ; 4 bajty na zaznam
     add rdi, rax
@@ -952,12 +955,16 @@ print_board_glyphs:
     lea rdi, [board_uni_reset]
     call write_cstr
     call print_newline
+    inc r14
+    cmp r14, 2
+    jl .row_loop
     inc r12
     cmp r12, 8
     jl .rank_loop
     call .print_letters
     call print_newline
     pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
