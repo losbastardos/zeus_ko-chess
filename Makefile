@@ -39,7 +39,7 @@ COMMANDS_DEBUG_LOG ?= commands_debug.log
 COMMANDS_DEBUG ?= $(shell awk -F= 'tolower($$1) ~ /^[[:space:]]*debug[[:space:]]*$$/ {v=tolower($$2); gsub(/[[:space:]]/,"",v); print (v ~ /^(1|true|yes|on)$$/ ? 1 : 0); found=1; exit} END {if (!found) print 0}' chess.ini 2>/dev/null)
 LOG_RUN = COMMANDS_DEBUG=$(COMMANDS_DEBUG) COMMANDS_DEBUG_LOG=$(COMMANDS_DEBUG_LOG) bash tests/tuning/command_debug_run.sh
 
-.PHONY: all clean run test bench bench-report perft-parity strength-gate roadmap-p0 roadmap-p0-record roadmap-p0-final texel-dataset texel-label texel-fit texel-split texel-pipeline texel-trial texel-batch pawn-hash-study bitboard-tables tb-smoke tb-smoke-matrix tb-verify-3piece syzygy-oracle tb-oracle-compare suite-depth-scan suite-repeat search-ablation-scan lmr-param-sweep commands-log-tail ab-compare ab-compare-report ab-history nightly-pipeline sprt-ab arasan-matchup thread-matrix-ab sprt-threads-matrix rtbz-variants syzygy-tools syzygy-3piece review-pack review-pack-nogate review-findings variant-static variant-rfp0 variant-lmr0 variant-lmp0 variant-null0 vps-test vps-strength-gate vps-roadmap-p0 vps-cmd
+.PHONY: all clean run test bench bench-report perft-parity strength-gate roadmap-p0 roadmap-p0-record roadmap-p0-final texel-dataset texel-label texel-fit texel-split texel-pipeline texel-trial texel-batch pawn-hash-study bitboard-tables tb-smoke tb-smoke-matrix tb-verify-3piece syzygy-oracle tb-oracle-compare suite-depth-scan suite-repeat search-ablation-scan lmr-param-sweep spsa commands-log-tail ab-compare ab-compare-report ab-history nightly-pipeline sprt-ab arasan-matchup thread-matrix-ab sprt-threads-matrix rtbz-variants syzygy-tools syzygy-3piece review-pack review-pack-nogate review-findings variant-static variant-rfp0 variant-lmr0 variant-lmp0 variant-null0 vps-test vps-strength-gate vps-roadmap-p0 vps-cmd
 
 all: $(TARGET) $(TARGET_STATIC)
 
@@ -207,6 +207,13 @@ lmr-param-sweep: $(TARGET_STATIC)
 	else \
 	  $(LOG_RUN) "$$PYBIN" tests/tuning/lmr_lmp_rfp_scan.py --lmr-param-sweep --suite "$(or $(SUITE),tests/suites/external/arasan2026.epd)" --depths "$(or $(DEPTHS),6,8)" --timeout "$(or $(TIMEOUT),900s)" $$LMR_IDX_ARG $$LMR_DEP_ARG $$LMR_BASE_ARG $$LMR_NIMP_ARG --lmp "$(or $(LMP),1)" --rfp "$(or $(RFP),1)" --report "$(or $(REPORT),tests/reports/lmr_param_sweep.txt)" --csv "$(or $(CSV),tests/reports/lmr_param_sweep.csv)"; \
 	fi
+
+SPSA_DEFAULT_PARAMS := LMR_INDEX_MIN:3:9:5,LMR_DEPTH_MIN:2:5:3,LMR_BASE_REDUCTION:0:3:1,LMR_EXTRA_NON_IMPROVING:0:1:1,RAZOR_MARGIN:100:400:250,FUTILITY_MARGIN:50:300:150
+
+spsa: $(TARGET_STATIC)
+	@PYBIN="$(or $(TUNE_PYTHON),python3)"; \
+	if [[ -x tests/tuning/.venv/bin/python && "$$PYBIN" == "python3" ]]; then PYBIN="tests/tuning/.venv/bin/python"; fi; \
+	$(LOG_RUN) "$$PYBIN" tests/tuning/spsa.py --rounds $(or $(ROUNDS),20) --games-per-side $(or $(GAMES_PER_SIDE),30) --params "$(or $(PARAMS),$(SPSA_DEFAULT_PARAMS))" --tc "$(or $(TC),5+0.05)" --seed $(or $(SEED),20261108) --concurrency $(or $(CONCURRENCY),2) --match-runner $(or $(MATCH_RUNNER),auto) $(if $(filter 1,$(SKIP_SPRT)),--skip-sprt,)
 
 commands-log-tail:
 	@if [[ ! -f "$(COMMANDS_DEBUG_LOG)" ]]; then echo "log file not found: $(COMMANDS_DEBUG_LOG)"; exit 1; fi
