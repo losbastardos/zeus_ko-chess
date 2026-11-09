@@ -59,26 +59,6 @@ negamax:
     jmp .neg_exit
 
 .not_leaf:
-    ; --- MATE DISTANCE PRUNING ---
-    ; alpha >= -MATE+ply, beta <= MATE-ply; ak sa stretnu, vrat alpha
-    mov rax, [search_ply]
-    lea rdx, [rax - MATE_SCORE]     ; -MATE + ply (dolna hranica)
-    cmp rdx, [rbp - 16]
-    jle .mdp_alpha_ok
-    mov [rbp - 16], rdx
-.mdp_alpha_ok:
-    mov rdx, MATE_SCORE
-    sub rdx, rax                    ; MATE - ply (horna hranica)
-    cmp rdx, [rbp - 24]
-    jge .mdp_beta_ok
-    mov [rbp - 24], rdx
-.mdp_beta_ok:
-    mov rax, [rbp - 16]
-    cmp rax, [rbp - 24]
-    jl .mdp_ok
-    jmp .neg_exit                   ; alpha >= beta: uz nemoze byt lepsi mat
-.mdp_ok:
-
     ; in_check flag pre cely uzol (null move, LMR, extension)
     movzx eax, byte [side]
     call is_in_check
@@ -120,12 +100,11 @@ negamax:
     cmp qword [tb_path_len], 0
     jle .tb_skip
 
-    ; ak je na sachovnici <= 3 kamenov, skus WDL probe
-    ; 4+ piece sety nie su v engine este plne stabilne -> fallback na normalny search
+    ; ak je na sachovnici <= TB_WDL_MAX_PIECES kamenov, skus WDL probe
     ; zname skore vratime okamzite; TB_NOT_FOUND = normalny search
     ; (pouzivame len caller-saved registre, nic nie je live)
     call tb_piece_count
-    cmp eax, 3
+    cmp eax, TB_WDL_MAX_PIECES
     jg .tb_skip
     call tb_probe_wdl
     cmp eax, TB_NOT_FOUND
@@ -147,6 +126,28 @@ negamax:
     sub rax, MATE_SCORE
     jmp .neg_exit
 .tb_skip:
+
+    ; --- MATE DISTANCE PRUNING ---
+    ; Az po TB probe: TB hodnota je presna a nezavisi na okne. MDP pred
+    ; probom pri nulovom okne na hranici MATE vratil falesny mate-score
+    ; (bound), ktory PVS v rootu vyhodnotil ako realny vysledok tahu.
+    mov rax, [search_ply]
+    lea rdx, [rax - MATE_SCORE]     ; -MATE + ply (dolna hranica)
+    cmp rdx, [rbp - 16]
+    jle .mdp_alpha_ok
+    mov [rbp - 16], rdx
+.mdp_alpha_ok:
+    mov rdx, MATE_SCORE
+    sub rdx, rax                    ; MATE - ply (horna hranica)
+    cmp rdx, [rbp - 24]
+    jge .mdp_beta_ok
+    mov [rbp - 24], rdx
+.mdp_beta_ok:
+    mov rax, [rbp - 16]
+    cmp rax, [rbp - 24]
+    jl .mdp_ok
+    jmp .neg_exit                   ; alpha >= beta: uz nemoze byt lepsi mat
+.mdp_ok:
 
     ; uloz povodne alpha pre urcenie TT flagu
     mov rax, [rbp - 16]
