@@ -82,6 +82,13 @@ class UciEngine:
         if not info_line:
             return 0
         tokens = info_line.split()
+        # SMP agregat: "nodes X (Y total)" -> pouzijeme Y (hlavne + helpery)
+        for idx, token in enumerate(tokens):
+            if token.startswith("(") and idx + 1 < len(tokens) and tokens[idx + 1] == "total)":
+                try:
+                    return int(token[1:])
+                except ValueError:
+                    return 0
         for idx, token in enumerate(tokens):
             if token == "nodes" and idx + 1 < len(tokens):
                 try:

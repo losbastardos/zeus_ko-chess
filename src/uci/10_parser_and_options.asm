@@ -912,6 +912,8 @@ uci_str_ponder_kw:  db "ponder", 0
 uci_info_depth: db "info depth ", 0
 uci_info_score: db " score cp ", 0
 uci_info_nodes: db " nodes ", 0
+uci_info_tot_open:  db " (", 0
+uci_info_tot_close: db " total)", 0
 uci_info_time:  db " time ", 0
 uci_info_pv:    db " pv ", 0
 uci_minus:      db "-", 0

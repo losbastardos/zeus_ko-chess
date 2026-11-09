@@ -545,7 +545,7 @@ uci_move_overhead: resd 1    ; milliseconds overhead per move (default 100 ms)
 uci_syzygy_probe_depth: resd 1 ; minimalna hlbka pre TB probe (0 = vypnute)
 uci_threads:    resd 1       ; P2 scaffold: pocet threadov pre buduci Lazy SMP (1..8)
 global smp_shared, smp_child_count
-smp_shared:      resq 1      ; pointer na MAP_SHARED stranku: +0 = stop flag
+smp_shared:      resq 1      ; pointer na MAP_SHARED stranku: +0 = stop flag, +8 = agregovane helper uzly
 smp_child_count: resd 1      ; pocet bezucich helper procesov
 global book_mode, book_search_depth, eval_mode
 book_mode:      resb 1       ; 0 = instant prvy knizny tah, 1 = vyber searchom

@@ -66,6 +66,7 @@ smp_clear_stop:
     test rax, rax
     jz .done
     mov byte [rax], 0
+    mov qword [rax + 8], 0      ; vynuluj agregovane helper uzly z predch. searchu
 .done:
     ret
 
@@ -197,6 +198,14 @@ smp_worker_main:
     mov qword [nodes_searched], 0
     mov rdi, r12
     call search_best_move
+    ; agreguj uzly tejto iteracie do zdielanej stranky (+8);
+    ; search_best_move resetuje nodes_searched kazdu iteraciu, preto pripocitavame tu
+    mov rcx, [smp_shared]
+    test rcx, rcx
+    jz .no_agg
+    mov rax, [nodes_searched]
+    lock add [rcx + 8], rax
+.no_agg:
     inc r12
     cmp r12, 64
     jle .id_loop

@@ -640,6 +640,23 @@ uci_emit_info:
     mov rax, [nodes_searched]
     call print_number
 
+    ; SMP: ak helpery nieco odvrtali, doplń agregovany pocet uzlov
+    mov r10, [smp_shared]
+    test r10, r10
+    jz .no_helper_total
+    mov r10, [r10 + 8]
+    test r10, r10
+    jz .no_helper_total
+    add r10, [nodes_searched]
+    push r10
+    lea rdi, [uci_info_tot_open]
+    call write_cstr
+    pop rax
+    call print_number
+    lea rdi, [uci_info_tot_close]
+    call write_cstr
+.no_helper_total:
+
     lea rdi, [uci_info_time]
     call write_cstr
     mov rax, r13
