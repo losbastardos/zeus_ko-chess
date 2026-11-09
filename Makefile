@@ -53,7 +53,7 @@ $(TARGET): $(OBJS)
 $(TARGET_STATIC): $(OBJS_STATIC)
 	$(LD) -o $(TARGET_STATIC) $(OBJS_STATIC)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.asm $(SRCDIR)/chess.inc $(SRCDIR)/eval_tune.inc $(SRCDIR)/pst_tune.inc
+$(OBJDIR)/%.o: $(SRCDIR)/%.asm $(SRCDIR)/chess.inc $(SRCDIR)/eval_tune.inc $(SRCDIR)/pst_tune.inc $(wildcard $(SRCDIR)/search/*.asm) $(wildcard $(SRCDIR)/uci/*.asm) $(wildcard $(SRCDIR)/tb/*.asm) $(wildcard $(SRCDIR)/tb/*/*.asm)
 	@mkdir -p $(dir $@)
 	nasm $(NASMFLAGS) $(EXTRA_DEFINES) $< -o $@
 
