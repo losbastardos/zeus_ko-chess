@@ -33,12 +33,13 @@ tb_try_constant_wdl:
     jmp .pawn_detect_loop
 .pawn_detect_done:
 
-    cmp dword [tb_num], 4
-    je .full4_decode
+    ; Pawnless 3/4-piece tabulky (KXvK aj opacne) dekodujeme jednotne
+    ; cez full4 tok: setup pieces/norm/factor + KK_IDX/111 encode.
+    ; KvK (num=2) ostava na legacy constant/uniform-root slice.
+    cmp dword [tb_num], 3
+    jae .full4_decode
 
-    call tb_wdl_is_target_3pc_pawnless
-    test eax, eax
-    jz .pawnless_legacy
+    jmp .pawnless_legacy
 
     ; full decode pre KQ/KR/KB/KN vs K (aj opacne)
     and ebx, 1                    ; split flag
@@ -301,12 +302,13 @@ tb_try_constant_wdl:
     jmp .raw_to_class
 
 .pawn_table:
-    ; pocet figurok: 3-piece (KPvK/KvPK) alebo 4-piece pawnful
+    ; Pawnful tabulky (3-piece KPvK/KvPK aj 4-piece) dekodujeme jednotne
+    ; cez pawn4 tok: file bucket + tb_setup_pieces_pawn + tb_encode_pawn_idx.
     cmp dword [tb_num], 3
-    je .pawn3_table
+    jb .not_found
     cmp dword [tb_num], 4
-    je .pawn4_table
-    jmp .not_found
+    ja .not_found
+    jmp .pawn4_table
 
 .pawn3_table:
     mov byte [tb_wdl_pairs_is_const], 4
@@ -674,9 +676,21 @@ tb_try_constant_wdl:
     mov [tb_wdl_debug_wk], r10d
     mov [tb_wdl_debug_bk], r11d
 
-    ; cmirror/mirror/bside podla key match (ako pawn3_table)
+    ; cmirror/mirror/bside: symmetric (rovnaky material) tabulky maju bside=0
+    ; a cmirror/mirror podla side; asymetricke idu key-match vetvou (probe.c)
     mov byte [tb_dec_cmirror_tmp], 0
     mov byte [tb_dec_mirror_tmp], 0
+    call tb_material_symmetric
+    test eax, eax
+    jz .p4_asym
+    xor edx, edx                  ; bside = 0
+    movzx eax, byte [side]
+    test eax, eax
+    jz .p4_side_ready
+    mov byte [tb_dec_cmirror_tmp], 8
+    mov byte [tb_dec_mirror_tmp], 56
+    jmp .p4_side_ready
+.p4_asym:
     movzx edx, byte [side]
     cmp r10, r11
     je .p4_side_ready

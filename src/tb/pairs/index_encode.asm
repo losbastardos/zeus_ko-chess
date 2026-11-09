@@ -566,48 +566,18 @@ tb_encode_piece_idx:
     cmp eax, 0
     je .reg_core_enc0
 
-    ; enc_type=2 core (11)
+    ; enc_type=2 core (11): idx = KK_IDX[TRIANGLE[p0]][p1]
     mov eax, [rsi]                ; p0
     mov ecx, [rsi + 4]            ; p1
-    xor r8d, r8d
-    cmp ecx, eax
-    setg r8b                      ; i = p1 > p0
-
-    lea r9, [tb_offdiag]
-    movsx ebx, byte [r9 + rax]
-    test ebx, ebx
-    jz .reg2_chk_p1
 
     lea r9, [tb_triangle]
     movzx ebx, byte [r9 + rax]
-    imul ebx, ebx, 63
-    mov edx, ecx
-    sub edx, r8d
-    add ebx, edx
-    jmp .reg_core_done
-
-.reg2_chk_p1:
-    movsx ebx, byte [r9 + rcx]
+    imul ebx, ebx, 64
+    add ebx, ecx
+    lea r9, [tb_KK_idx]
+    movsx ebx, word [r9 + rbx*2]
     test ebx, ebx
-    jz .reg2_both_diag
-
-    lea r9, [tb_diag]
-    movzx ebx, byte [r9 + rax]
-    imul ebx, ebx, 28
-    add ebx, 378                  ; 6*63
-    lea r9, [tb_lower]
-    movzx edx, byte [r9 + rcx]
-    add ebx, edx
-    jmp .reg_core_done
-
-.reg2_both_diag:
-    lea r9, [tb_diag]
-    movzx ebx, byte [r9 + rax]
-    imul ebx, ebx, 7
-    add ebx, 490                  ; 6*63 + 4*28
-    movzx edx, byte [r9 + rcx]
-    sub edx, r8d
-    add ebx, edx
+    js .fail
     jmp .reg_core_done
 
 .reg_core_enc0:
@@ -673,7 +643,7 @@ tb_encode_piece_idx:
     lea r11, [tb_diag]
     movzx ebx, byte [r11 + rax]
     imul ebx, ebx, 196            ; 7*28
-    add ebx, 27888                ; 6*63*62 + 4*28*62
+    add ebx, 30380                ; 6*63*62 + 4*28*62
     movzx r10d, byte [r11 + rcx]
     sub r10d, r8d
     imul r10d, r10d, 28
@@ -687,7 +657,7 @@ tb_encode_piece_idx:
     lea r11, [tb_diag]
     movzx ebx, byte [r11 + rax]
     imul ebx, ebx, 42             ; 7*6
-    add ebx, 28672                ; 6*63*62 + 4*28*62 + 4*7*28
+    add ebx, 31164                ; 6*63*62 + 4*28*62 + 4*7*28
     movzx r10d, byte [r11 + rcx]
     sub r10d, r8d
     imul r10d, r10d, 6

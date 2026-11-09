@@ -440,6 +440,36 @@ tb_pairs_prepare_pawn_override:
     mov r15d, ecx                 ; target_slot
     mov rbp, r8                   ; tb_size
 
+    ; tb_size pre kazdy file (tb_setup_pieces_pawn bside=0; v ramci file je
+    ; tb_size rovnaky pre obe bside). size0 slotu zavisi na tb_size jeho file,
+    ; nie iba target file — KPPvK ma rozne tb_size per file.
+    sub rsp, 240
+    lea rsi, [tb_pieces]
+    lea rdi, [rsp]
+    mov ecx, 29                   ; 232 bajtov (pieces..tb_tb_size)
+    rep movsq
+    xor r9d, r9d                  ; file 0..3
+.p4ts_loop:
+    cmp r9d, 4
+    jae .p4ts_done
+    mov [rsp + 232], r9d
+    mov edi, r9d
+    xor esi, esi                  ; bside = 0
+    mov edx, [tb_pawns0]
+    mov ecx, [tb_pawns1]
+    call tb_setup_pieces_pawn
+    mov r9d, [rsp + 232]
+    mov rax, [tb_tb_size]
+    mov [tb_pawn_tbsize + r9*8], rax
+    inc r9d
+    jmp .p4ts_loop
+.p4ts_done:
+    lea rsi, [rsp]
+    lea rdi, [tb_pieces]
+    mov ecx, 29
+    rep movsq
+    add rsp, 240
+
     xor ebx, ebx
 .scan_slots:
     cmp ebx, r14d
@@ -469,7 +499,13 @@ tb_pairs_prepare_pawn_override:
     mov rax, 1
     shl rax, cl
     dec rax
-    add rax, rbp
+    ; tb_size pre file daneho slotu (split: file = slot/2, inak file = slot)
+    mov r9d, ebx
+    cmp r14d, 8
+    jne .p4_size_file_ready
+    shr r9d, 1
+.p4_size_file_ready:
+    add rax, [tb_pawn_tbsize + r9*8]
     shr rax, cl                    ; num_indices
     imul rax, rax, 6               ; size0
     mov [rdi + rbx*8], rax

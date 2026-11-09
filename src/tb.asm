@@ -144,6 +144,7 @@ tb_pawns1: resd 1              ; pocet pescov v druhej pawns skupine
 tb_tmp_pieces: resd 16         ; tmp pieces[] pre board->pos mapovanie
 tb_tmp_gpos: resd 16           ; tmp gpos[] pre board->pos mapovanie
 tb_tmp_pos: resd 16            ; tmp pos[] v poradi pieces[bside]
+tb_pawn_tbsize: resq 4         ; tb_size per file pre pawnful override (size0 slotu)
 
 section .rodata
 
@@ -306,6 +307,7 @@ global tb_dec_stage_tmp
 global tb_num
 global tb_nonking
 global tb_enc_type, tb_pieces, tb_norm, tb_factor, tb_tb_size, tb_pawns0, tb_pawns1
+global tb_pawn_tbsize
 
 extern board, side, halfmove
 extern pl_dirty, pl_counts
