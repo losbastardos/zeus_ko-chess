@@ -1,4 +1,4 @@
-tb_probe_wdl:
+tb_probe_wdl_table:
     mov byte [tb_dec_override_ptrs], 0
     lea rdi, [tb_sym_cache_state]
     mov ecx, 4096/8
@@ -672,6 +672,93 @@ tb_probe_wdl:
     pop r12
     pop r15
     pop rcx
+    pop rbx
+    ret
+
+; ============================================================
+; tb_probe_wdl - verejny WDL probe s capture resolution
+; Semantika podla Fathom/probetool probe_wdl: vysledok je
+; max(table probe, rekurzivne vyhodnotenie legalnych capture
+; tahov do mensich tabuliek). Raw WDL tabulky konverzie cez
+; capture do inych tabuliek same osebe nezohladnuju.
+; Vystup: eax = TB_WIN/TB_DRAW/TB_LOSS/TB_NOT_FOUND
+; ============================================================
+tb_probe_wdl:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+
+    call tb_probe_wdl_table
+    mov ebx, eax                ; best = table probe (moze byt TB_NOT_FOUND)
+    cmp eax, TB_WIN
+    je .done
+
+    ; legalne tahy (kopiu move_list na stack, rekurzia ho prepise)
+    call generate_all_moves
+    call filter_legal_moves
+    movzx r12d, word [move_count]
+    test r12d, r12d
+    jz .done
+    sub rsp, 512
+    xor ecx, ecx
+.copy_loop:
+    cmp ecx, r12d
+    jae .copied
+    movzx eax, word [move_list + rcx*2]
+    mov [rsp + rcx*2], ax
+    inc ecx
+    jmp .copy_loop
+.copied:
+    xor r13d, r13d              ; i
+.move_loop:
+    movzx r14d, word [rsp + r13*2]
+    ; capture test: cielove policko obsadene alebo en passant
+    mov eax, r14d
+    shr eax, 6
+    and eax, 0x3f
+    movzx eax, byte [board + rax]
+    test eax, eax
+    jnz .is_capture
+    mov eax, r14d
+    shr eax, 12
+    and eax, 0x0f
+    cmp eax, FLAG_ENPASSANT
+    jne .next
+.is_capture:
+    mov eax, r14d
+    call make_move
+    call tb_probe_wdl           ; rekurzia: child na tahu (s vlastnou resolution)
+    mov r15d, eax
+    cmp r15d, TB_NOT_FOUND
+    jne .child_ready
+    ; child bez tabulky: KvK (iba kralovia) = remiza
+    call tb_piece_count
+    cmp eax, 2
+    jne .child_ready
+    mov r15d, TB_DRAW
+.child_ready:
+    call unmake_move
+    mov eax, TB_WIN
+    sub eax, r15d               ; nase skore = 2 - child (win<->loss)
+    cmp eax, ebx
+    jle .next
+    mov ebx, eax
+    cmp ebx, TB_WIN
+    je .restore_done
+.next:
+    inc r13d
+    cmp r13d, r12d
+    jb .move_loop
+.restore_done:
+    add rsp, 512
+.done:
+    mov eax, ebx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
     pop rbx
     ret
 

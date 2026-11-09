@@ -311,7 +311,7 @@ global tb_pawn_tbsize
 
 extern board, side, halfmove
 extern pl_dirty, pl_counts
-extern generate_all_moves, is_in_check, move_count
+extern generate_all_moves, is_in_check, move_count, move_list, make_move, unmake_move
 extern filter_legal_moves
 
 
