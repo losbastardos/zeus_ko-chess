@@ -441,6 +441,24 @@ uci_go:
 
 .id_done:
     call smp_stop_and_reap    ; bezpecne aj bez helperov (child_count=0 -> hned return)
+    ; SMP: helpery su dovršene, [smp_shared+8] je finalny agregat.
+    ; Doplnime finalny info riadok s celym poctom uzlov (benchmark harness
+    ; berie posledny info riadok pred bestmove). Pri 1 vlakne / bez helperov
+    ; sa nevypise nic — vystup zostava identicky so single-thread searchom.
+    mov rax, [smp_shared]
+    test rax, rax
+    jz .no_final_agg
+    cmp qword [rax + 8], 0
+    je .no_final_agg
+    test r13, r13
+    jz .no_final_agg          ; fallback cesty si finalny emit riesia samy
+    call uci_now_ms
+    sub rax, [search_limits + 48]
+    mov rdi, r14
+    mov rsi, rax
+    mov rdx, r13
+    call uci_emit_info
+.no_final_agg:
     test r13, r13
     jnz .id_have_best
 
