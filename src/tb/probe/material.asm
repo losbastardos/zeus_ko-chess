@@ -280,3 +280,58 @@ tb_build_canonical_name:
     pop rcx
     pop rbx
     ret
+
+; ============================================================
+; tb_material_symmetric
+; Vstup: tb_board_pieces (naplnene tb_material_scan)
+; Vystup: eax = 1 ak biely a cierny ne-kralovsky material je ako multiset
+;         rovnaky (KXvKX symetria), inak 0
+; ============================================================
+global tb_material_symmetric
+tb_material_symmetric:
+    push rbx
+    push rcx
+    push rdx
+    push r8
+    push r9
+
+    lea rbx, [tb_board_pieces]
+    mov ecx, PAWN
+.type_loop:
+    cmp ecx, KING
+    ja .sym
+    xor edx, edx                  ; white count
+    xor r8d, r8d                  ; black count
+    xor r9d, r9d
+.cnt:
+    cmp r9d, 8
+    jae .cnt_done
+    movzx eax, byte [rbx + r9]
+    cmp eax, ecx
+    jne .cnt_b
+    inc edx
+.cnt_b:
+    movzx eax, byte [rbx + 8 + r9]
+    cmp eax, ecx
+    jne .cnt_next
+    inc r8d
+.cnt_next:
+    inc r9d
+    jmp .cnt
+.cnt_done:
+    cmp edx, r8d
+    jne .asym
+    inc ecx
+    jmp .type_loop
+.sym:
+    mov eax, 1
+    jmp .ms_done
+.asym:
+    xor eax, eax
+.ms_done:
+    pop r9
+    pop r8
+    pop rdx
+    pop rcx
+    pop rbx
+    ret

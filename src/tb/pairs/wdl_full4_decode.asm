@@ -45,23 +45,10 @@
     jmp .f4_ptr_key_loop
 .f4_ptr_key_done:
 
-    ; symmetric test: pieces[1][i] == (pieces[0][i] ^ 8)
-    mov r11d, 1
-    xor eax, eax
-.f4_sym_loop:
-    cmp eax, [tb_num]
-    jae .f4_sym_done
-    movzx ecx, byte [tb_pieces + rax]
-    xor ecx, 8
-    movzx edx, byte [tb_pieces + 8 + rax]
-    cmp ecx, edx
-    je .f4_sym_next
-    xor r11d, r11d
-    jmp .f4_sym_done
-.f4_sym_next:
-    inc eax
-    jmp .f4_sym_loop
-.f4_sym_done:
+    ; symmetric test: rovnaky ne-kralovsky material na oboch stranach
+    ; (KXvKX symetria, pozri python-chess Table.symmetric)
+    call tb_material_symmetric
+    mov r11d, eax
 
     ; bside/cmirror podla key-match vetvy
     movzx eax, byte [side]        ; side: 0=white,1=black, => wtm = !side
