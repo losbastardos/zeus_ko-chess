@@ -98,6 +98,14 @@ tb_ensure_loaded_path:
     call tb_load_path
     test eax, eax
     jnz .fail
+    mov byte [tb_dec_override_ptrs], 0
+    lea rdi, [tb_sym_cache_state]
+    mov ecx, 4096/8
+    xor eax, eax
+    rep stosq
+    lea rdi, [tb_dec_symlen]
+    mov ecx, 4096/8
+    rep stosq
     lea rdi, [tb_loaded_path]
     mov rsi, rbx
     call tb_copy_path

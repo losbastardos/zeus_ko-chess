@@ -19,6 +19,8 @@ tb_pairs_decode_symbol_idx:
     jz .fail
     cmp r12, r13
     jae .fail
+    cmp r12, [tb_map]
+    jb .fail
 
     lea rax, [r12 + 2]
     cmp rax, r13
@@ -88,6 +90,8 @@ tb_pairs_decode_symbol_idx:
     add rax, rdx
     cmp rax, r13
     ja .fail
+    cmp rax, [tb_map]
+    jb .fail
     mov [tb_dec_indextable], rax
 
     mov ecx, [tb_dec_idxbits]
@@ -114,10 +118,22 @@ tb_pairs_decode_symbol_idx:
     jne .derive_ptrs
     mov byte [tb_dec_override_ptrs], 0
     mov rdx, [tb_dec_override_indextable]
+    cmp rdx, [tb_map]
+    jb .fail
+    cmp rdx, r13
+    ja .fail
     mov [tb_dec_indextable], rdx
     mov rdx, [tb_dec_override_sizetable]
+    cmp rdx, [tb_map]
+    jb .fail
+    cmp rdx, r13
+    ja .fail
     mov [tb_dec_sizetable], rdx
     mov rdx, [tb_dec_override_data]
+    cmp rdx, [tb_map]
+    jb .fail
+    cmp rdx, r13
+    ja .fail
     mov [tb_dec_data], rdx
     jmp .build_codes
 
@@ -129,6 +145,8 @@ tb_pairs_decode_symbol_idx:
     lea rdx, [rdx + rbx]
     cmp rdx, r13
     ja .fail
+    cmp rdx, [tb_map]
+    jb .fail
     mov [tb_dec_sizetable], rdx
 
     mov eax, [tb_dec_num_blocks]
@@ -139,6 +157,8 @@ tb_pairs_decode_symbol_idx:
     ja .fail
     add rdx, 63
     and rdx, -64
+    cmp rdx, [tb_map]
+    jb .fail
     mov [tb_dec_data], rdx
 
     mov eax, [tb_dec_blocksize]
@@ -331,6 +351,8 @@ tb_pairs_decode_symbol_idx:
     mov ecx, [tb_dec_blocksize]
     shl rax, cl
     add rax, [tb_dec_data]
+    cmp rax, [tb_map]
+    jb .fail
     mov r10, rax                   ; block ptr
     mov eax, 1
     mov ecx, [tb_dec_blocksize]

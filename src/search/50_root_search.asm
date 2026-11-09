@@ -70,12 +70,23 @@ search_best_move:
     test r12, r12
     jz .no_moves
 
-    ; lokalna kopia tahov
+    ; lokalna kopia tahov + TB root ordering polia:
+    ;   [rsp, rsp+move_bytes)                      tahy (word)
+    ;   [rsp+move_bytes, +cls_bytes)               TB trieda/tah (0=none,1=win,2=draw,3=loss)
+    ;   [rsp+move_bytes+cls_bytes, +4*r12)         DTZ v parent perspektive (signed dword)
     mov rax, r12
     shl rax, 1
     add rax, 7
-    and rax, ~7
-    sub rsp, rax
+    and rax, ~7              ; move_bytes (8-align)
+    mov rcx, rax
+    lea rax, [r12 + 7]
+    and rax, ~7              ; cls_bytes (8-align)
+    add rcx, rax
+    mov rax, r12
+    shl rax, 2               ; dtz bytes
+    add rcx, rax
+    add rcx, 64              ; TB root ordering lokalov [rbp-8..rbp-40]
+    sub rsp, rcx
 
     lea rsi, [move_list]
     mov rdi, rsp
@@ -87,6 +98,130 @@ search_best_move:
     add rdi, 2
     dec rcx
     jnz .copy_loop
+
+    ; --- TB ROOT DTZ ORDERING (probe raz na root poziciu) ---
+    ; Podmienky: nie sme v book (uci_own_book=0), nastavena TB cesta,
+    ; tb_piece_count <= TB_ROOT_MAX_PIECES. Kazdy tah sa probe-ne
+    ; (make -> tb_probe_dtz -> unmake) a dostane TB triedu; DTZ hodnota
+    ; sa zoberie z helper debug globalu (signed, child STM perspektiva,
+    ; negovane do parent perspektivy). Ak neprobuje ziadny tah
+    ; (vsetko TB_NOT_FOUND), ordering sa nijak nemeni.
+    ; tb_probe_dtz vracia triedu strany na tahu: 0=draw, 1=win, 2=loss,
+    ; TB_NOT_FOUND = tabulka/trieda neexistuje.
+    mov qword [rbp - 8], 0          ; tbroot_active
+    mov qword [rbp - 16], 0         ; tbroot_cls_base
+    mov qword [rbp - 24], 0         ; tbroot_dtz_base
+    mov qword [rbp - 32], 0         ; tbroot_probovanych
+    cmp byte [uci_own_book], 0
+    jne .tbroot_done
+    cmp qword [tb_path_len], 0
+    jle .tbroot_done
+    call tb_piece_count
+    cmp eax, TB_ROOT_MAX_PIECES
+    jg .tbroot_done
+    mov rax, r12
+    shl rax, 1
+    add rax, 7
+    and rax, ~7              ; move_bytes
+    lea rcx, [rsp + rax]     ; cls base
+    mov [rbp - 16], rcx
+    lea rdx, [r12 + 7]
+    and rdx, ~7
+    add rdx, rcx             ; dtz base
+    mov [rbp - 24], rdx
+    xor edx, edx
+.tbroot_zero:
+    cmp rdx, r12
+    jae .tbroot_zero_done
+    mov byte [rcx + rdx], 0
+    inc rdx
+    jmp .tbroot_zero
+.tbroot_zero_done:
+    xor ecx, ecx             ; i = 0
+.tbroot_probe:
+    cmp rcx, r12
+    jae .tbroot_probe_done
+    movzx eax, word [rsp + rcx*2]
+    push rcx
+    call make_move
+    call tb_probe_dtz
+    mov r8, [rsp]            ; index i
+    xor r9d, r9d             ; 0 = ziaden TB info
+    cmp eax, TB_NOT_FOUND
+    je .tbroot_store
+    inc qword [rbp - 32]
+    cmp eax, 2               ; child loss -> parent vyhra
+    je .tbroot_parent_win
+    cmp eax, 1               ; child win -> parent prehra
+    je .tbroot_parent_loss
+    mov r9d, 2               ; draw
+    jmp .tbroot_map_dtz
+.tbroot_parent_win:
+    mov r9d, 1
+    jmp .tbroot_map_dtz
+.tbroot_parent_loss:
+    mov r9d, 3
+.tbroot_map_dtz:
+    ; helper DTZ (child STM, signed) -> parent D = -dtz, clamp [-999,999]
+    ; neznama DTZ (fallback trieda): win -> +500, loss -> -500 (stred pasma)
+    mov r10d, dword [tb_dtz_debug_helper_ret]
+    cmp byte [tb_dtz_debug_helper_ok], 0
+    je .tbroot_dtz_default
+    cmp r10d, DTZ_UNSUPPORTED
+    je .tbroot_dtz_default
+    cmp r10d, TB_NOT_FOUND
+    je .tbroot_dtz_default
+    neg r10d
+    jmp .tbroot_dtz_clamp
+.tbroot_dtz_default:
+    mov r10d, 500
+    cmp r9d, 3
+    je .tbroot_loss_default
+    cmp r9d, 1
+    jne .tbroot_dtz_clamp
+    ; parent win bez helper DTZ: ak je child prave matovaný, D=1
+    ; (najrychlejsia mozna vyhra); inak neznama DTZ = 500
+    push r8
+    push r9
+    call generate_all_moves
+    call filter_legal_moves
+    movzx eax, word [move_count]
+    test eax, eax
+    jnz .tbroot_mate_done
+    movzx eax, byte [side]
+    call is_in_check
+    test eax, eax
+    jz .tbroot_mate_done
+    mov r10d, 1
+.tbroot_mate_done:
+    pop r9
+    pop r8
+    jmp .tbroot_dtz_clamp
+.tbroot_loss_default:
+    mov r10d, -500
+.tbroot_dtz_clamp:
+    cmp r10d, 999
+    jle .tbroot_dtz_lo
+    mov r10d, 999
+.tbroot_dtz_lo:
+    cmp r10d, -999
+    jge .tbroot_dtz_save
+    mov r10d, -999
+.tbroot_dtz_save:
+    mov rax, [rbp - 24]
+    mov dword [rax + r8*4], r10d
+.tbroot_store:
+    mov rax, [rbp - 16]
+    mov byte [rax + r8], r9b
+    call unmake_move
+    pop rcx
+    inc rcx
+    jmp .tbroot_probe
+.tbroot_probe_done:
+    cmp qword [rbp - 32], 0
+    je .tbroot_done
+    mov qword [rbp - 8], 1
+.tbroot_done:
 
     mov r13, -INF           ; best score
     xor r14d, r14d          ; best move
@@ -261,6 +396,47 @@ search_best_move:
     add edx, dword [rdi + r9*4]
 
 .root_score_done:
+    ; --- TB root ordering bonus ---
+    ; Vyhra (najmensia DTZ prva) > remiza > prehra (najvacsia DTZ prva).
+    ; Tier bonusy (10/20/30M) dominuju nad default klucom aj prev-iter
+    ; bonusom (+1M), takze TB-informovane tahy idu vzdy vpred.
+    cmp qword [rbp - 8], 0
+    je .tbroot_key_done
+    mov rdi, [rbp - 16]
+    movzx edi, byte [rdi + r8]
+    cmp edi, 1
+    je .tbroot_key_win
+    cmp edi, 2
+    je .tbroot_key_draw
+    cmp edi, 3
+    jne .tbroot_key_done
+    ; prehra: najvacsia DTZ (oddaluj prehru) prva
+    mov rdi, [rbp - 24]
+    mov edi, dword [rdi + r8*4]     ; D < 0
+    neg edi
+    cmp edi, 999
+    jle .tbroot_loss_add
+    mov edi, 999
+.tbroot_loss_add:
+    add edx, 10000000
+    add edx, edi
+    jmp .tbroot_key_done
+.tbroot_key_win:
+    ; vyhra: najmensia DTZ (najkratsia vyhra) prva
+    mov rdi, [rbp - 24]
+    mov edi, dword [rdi + r8*4]     ; D > 0
+    cmp edi, 999
+    jle .tbroot_win_sub
+    mov edi, 999
+.tbroot_win_sub:
+    mov r9d, 999
+    sub r9d, edi
+    add edx, 30000000
+    add edx, r9d
+    jmp .tbroot_key_done
+.tbroot_key_draw:
+    add edx, 20000000
+.tbroot_key_done:
     ; best move z predchadzajucej ID iteracie ma prioritu
     cmp ax, word [root_best_move]
     jne .root_score_cmp

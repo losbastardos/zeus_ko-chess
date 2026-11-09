@@ -82,3 +82,9 @@ TB_DRAW      equ 1
 TB_WIN       equ 2
 TB_NOT_FOUND equ 255
 DTZ_UNSUPPORTED equ 32768
+
+; TB root DTZ ordering: maximalny pocet figurok, kedy sa pri root-e
+; kazdy tah probe-n cez tb_probe_dtz a triedi sa vyhra > remiza > prehra
+TB_ROOT_MAX_PIECES equ 5
+; TB WDL probe v negamax: maximalny pocet figurok pre WDL cutoff
+TB_WDL_MAX_PIECES  equ 4

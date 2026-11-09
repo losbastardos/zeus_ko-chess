@@ -1,4 +1,12 @@
 tb_probe_wdl:
+    mov byte [tb_dec_override_ptrs], 0
+    lea rdi, [tb_sym_cache_state]
+    mov ecx, 4096/8
+    xor eax, eax
+    rep stosq
+    lea rdi, [tb_dec_symlen]
+    mov ecx, 4096/8
+    rep stosq
     push rbx
     push rcx
     push r15

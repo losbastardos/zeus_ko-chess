@@ -233,6 +233,7 @@ extern search_limits, uci_stop_flag
 extern apply_move_search, update_position_state_search
 extern pos_sync_move_delta, pos_sync_move_delta_undo
 extern generate_all_moves, is_in_check, evaluate
+extern filter_legal_moves
 extern promo_pieces, moved_piece, captured_piece
 extern see
 extern compute_hash
@@ -242,8 +243,10 @@ extern bb_occ
 extern tt_probe, tt_store, position_hash
 extern check_repetition
 extern hash_history, hash_count
-extern tb_piece_count, tb_probe_wdl, tb_path_len
+extern tb_piece_count, tb_probe_wdl, tb_probe_dtz, tb_path_len
+extern tb_dtz_debug_helper_ret, tb_dtz_debug_helper_ok
 extern uci_syzygy_probe_depth
+extern uci_own_book
 extern search_poll_input
 extern book_lookup_all, book_moves, book_moves_len, book_mode, book_search_depth, book_rating_flag
 extern singular_excl

@@ -1,4 +1,12 @@
 tb_probe_dtz:
+    mov byte [tb_dec_override_ptrs], 0
+    lea rdi, [tb_sym_cache_state]
+    mov ecx, 4096/8
+    xor eax, eax
+    rep stosq
+    lea rdi, [tb_dec_symlen]
+    mov ecx, 4096/8
+    rep stosq
     push rbx
     push rcx
     push r12
@@ -464,6 +472,12 @@ tb_try_decode_dtz_3pc:
     test eax, eax
     jz .nf_109
     mov r9, r8
+    test r9, r9
+    jz .nf_109
+    cmp r9, r14
+    jae .nf_109
+    cmp r9, r15
+    jb .nf_109
 
     ; split + bside0: r9 momentalne ukazuje na druhy setup header, posun na map start
     mov eax, ebx
@@ -479,6 +493,12 @@ tb_try_decode_dtz_3pc:
     test eax, eax
     jz .nf_109
     mov r9, r8
+    test r9, r9
+    jz .nf_109
+    cmp r9, r14
+    jae .nf_109
+    cmp r9, r15
+    jb .nf_109
 
 .map_start_ready:
 
@@ -749,6 +769,12 @@ tb_try_decode_dtz_3pc:
     test r10d, 16
     jnz .map_u16
 
+    test r9, r9
+    jz .nf
+    cmp r9, r14
+    jae .nf
+    cmp r9, r15
+    jb .nf
     mov rdi, r9
     xor edx, edx
 .map8_iter:
@@ -771,6 +797,12 @@ tb_try_decode_dtz_3pc:
     jmp .mapped_ready
 
 .map_u16:
+    test r9, r9
+    jz .nf
+    cmp r9, r14
+    jae .nf
+    cmp r9, r15
+    jb .nf
     mov rdi, r9
     xor edx, edx
 .map16_iter:
