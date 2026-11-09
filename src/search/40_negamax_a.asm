@@ -1000,6 +1000,50 @@ negamax:
     jmp .move_loop
 .no_lmp:
 
+    ; --- HISTORY MALUS: za LMP hranicou prunej tiche tahy s nizkym history ---
+    ; !in_check && quiet && index >= 3 + depth^2 && history[side][from][to] <= prah
+    ; (killers/countermoves maju po cut-offe kladne history, netlaci ich to;
+    ;  evasion cesta v sachu je vylucena testom [rbp - 44])
+%if ENABLE_HISTORY_MALUS = 0
+    jmp .no_hist_malus
+%endif
+    cmp dword [rbp - 76], 0
+    je .no_hist_malus
+    cmp r12d, 1
+    jne .no_hist_malus
+    cmp dword [rbp - 44], 0
+    jne .no_hist_malus
+    mov rdx, [rbp - 8]      ; pozor: rax = aktualny tah pre make_move!
+    cmp qword [search_ply], 4   ; pod ply 4 taktika blizko korena: neprunej
+    jb .no_hist_malus
+    mov r9, [search_ply]
+    imul rdx, rdx           ; depth^2 (LMP hranica)
+    add rdx, 3
+    cmp r9, 6
+    jae .hm_boundary_ok     ; ply >= 6: plna hranica
+    imul rdx, 2             ; ply 4-5: dvojnasobna hranica (jemnejsie)
+.hm_boundary_ok:
+    cmp rcx, rdx
+    jl .no_hist_malus
+    ; history[side][from][to]: index = side*4096 + from*64 + to
+    movzx edx, byte [side]
+    shl edx, 12
+    mov r9d, eax
+    and r9d, 0x3F           ; from
+    shl r9d, 6
+    add edx, r9d
+    mov r9d, eax
+    shr r9d, 6
+    and r9d, 0x3F           ; to
+    add edx, r9d
+    lea r9, [history]
+    mov edx, dword [r9 + rdx*4]
+    cmp edx, HISTORY_MALUS_THRESHOLD
+    jg .no_hist_malus       ; history nad prahom: hladaj
+    inc rcx                 ; preskoc tah
+    jmp .move_loop
+.no_hist_malus:
+
     ; --- FUTILITY PRUNING: beznadejne tiche tahy pri nizkej hlbke preskoc ---
     ; !in_check && quiet && depth <= 2 && index >= 1 &&
     ; static_eval + FUTILITY_MARGIN*depth <= alpha && alpha daleko od matu

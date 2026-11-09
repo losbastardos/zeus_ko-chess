@@ -27,6 +27,9 @@ DEFAULT REL
 %ifndef ENABLE_LMP
 %define ENABLE_LMP 1
 %endif
+%ifndef ENABLE_HISTORY_MALUS
+%define ENABLE_HISTORY_MALUS 1
+%endif
 %ifndef ENABLE_FUTILITY
 %define ENABLE_FUTILITY 1
 %endif
@@ -77,6 +80,7 @@ PL_COUNTS_SIZE       equ 12      ; 12 * 1
 ; Search pruning konstanty (E9)
 RAZOR_MARGIN    equ 250         ; razoring: eval + margin < alpha pri depth 1
 FUTILITY_MARGIN equ 150         ; futility: margin = FUTILITY_MARGIN * depth (d1: 150, d2: 300)
+HISTORY_MALUS_THRESHOLD equ 0   ; history malus: prunej quiet tah za LMP hranicou ak history <= prah
 EVAL_NONE       equ 0x7FFFFF00  ; sentinel: ziadny static eval (uzol v sachu)
 
 %define PROT_READ   1
