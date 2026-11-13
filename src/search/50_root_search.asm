@@ -633,6 +633,7 @@ search_best_move:
 
     cmp eax, r13d
     jl .next
+    mov [rbp - 40], eax          ; odloz skore tahu cez helper volania
     jg .take_new
 
     ; tie-break pri rovnakom score:
@@ -653,6 +654,7 @@ search_best_move:
     jne .next                       ; current je tiez home-king -> bez zmeny
 
 .take_new:
+    mov eax, [rbp - 40]          ; skore tahu (is_home_opening_move prepisuje eax)
     mov r13d, eax
     mov dword [root_alpha], eax   ; alpha = best
     movzx r14d, word [rsp + rcx*2]
