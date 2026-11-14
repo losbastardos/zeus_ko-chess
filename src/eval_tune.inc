@@ -20,7 +20,7 @@ ROOK_OPEN      equ 25
 ROOK_SEMI      equ 12
 ROOK_SEVENTH   equ 25
 ROOK_BEHIND_PP equ 18    ; veza za prekonajucim pesiakom
-TEMPO_BONUS    equ 28
+TEMPO_BONUS    equ 22
 
 ; mobility: bonus za dosiahnutelne policko (N/B/R/Q), MG/EG
 ; indexy: 0=prazdne,1=pesiak,2=jazdec,3=strelec,4=veza,5=dama,6=kral
