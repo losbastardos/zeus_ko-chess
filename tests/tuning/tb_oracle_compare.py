@@ -132,7 +132,6 @@ def run_oracle(python_bin: str, syz_path: str, fen: str, timeout: int) -> tuple[
             syz_path,
             "--fen",
             fen,
-            "--table-only",
         ],
         text=True,
         capture_output=True,
