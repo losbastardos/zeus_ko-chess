@@ -3,8 +3,48 @@
 A high-performance chess engine written in x86-64 NASM assembly for Linux, featuring UCI protocol support, alpha-beta pruning with quiescence search, opening book integration, and both text and graphical (framebuffer/SDL) interfaces.
 
 Textový šachový engine písaný v čistom NASM assembly pre x86-64 Linux.
-Aktuálny stav: stabilná UCI vetva, text aj grafika (framebuffer/SDL), opening book,
-Syzygy podpora a priebežné ladenie sily vyhľadávania/evaluácie.
+Stav: UCI (cutechess-ready), text aj grafika (procedurálne figúrky, framebuffer/SDL2),
+vlastný opening book, ECO knižnica, Syzygy WDL/DTZ probe (3/4-piece, časť 5-piece),
+Lazy SMP, PGN export.
+
+## Čo vie (výber)
+
+- **Search:** negamax + PVS, quiescence, iteratívne prehlbovanie, aspiration,
+  TT, null-move (zugzwang guard), LMR, ProbCut, singular extension, razoring,
+  futility/RFP/LMP, SEE, history heuristiky (killer/countermove/capture/
+  continuation), mate distance pruning, check extension, nodes-based TM.
+- **Eval:** tapered MG/EG (PST + štruktúra + mobility + king safety + outposty),
+  prepínateľné NNUE — `EvalMode 0/1/2` (klasika / lineárny / 1 skrytá vrstva,
+  formáty v1-v3, HalfKP loader).
+- **TB:** vlastný Syzygy loader (mmap, pairs decode), WDL/DTZ sondu, root DTZ
+  ordering, oracle-validované triedy.
+- **Protokoly:** UCI (Hash/OwnBook/Ponder/Threads/MoveOverhead/EvalMode/
+  SyzygyPath/SyzygyProbeDepth), diagnostika `tbtest`, `suite`, `bench`, `perft`.
+
+Nie všetko je vhodné na verejné popisovanie; zvyšok je v kóde a v
+`docs/superpowers/`.
+
+## Odkiaľ sú metódy (teoretické zdroje)
+
+- Search heuristiky (LMR, null-move, ProbCut, singular ext., futility...):
+  prehľad a literatúru zhromažďuje [Chess Programming Wiki](https://www.chessprogramming.org/Main_Page),
+  konkrétne heuristiky podľa mena; referenčná implementácia
+  [Stockfish](https://github.com/official-stockfish/Stockfish) (search.cpp).
+- NNUE: formát a tréningová metóda podľa
+  [Graf / «NNUE»](https://github.com/nodchip/Stockfish) (nodchip branch),
+  HalfKP feature definície tamtiež; engine-side konvencie kompatibilné s
+  python-chess inference (oracle `utils/syzygy_oracle.py` + training tooling
+  v `tests/tuning/`).
+- Texel / coordinate-descent ladenie váh: metóda Texela
+  (CPW: [Texel's Tuning Method](https://www.chessprogramming.org/Texel%27s_Tuning_Method)).
+- Syzygy TB: formát tabuliek a probe sémantika podľa pôvodného arbitra
+  (`probe.c` z Fathom / Ronald de Man), validácia cez
+  [python-chess](https://python-chess.readthedocs.io/) syzygy modul.
+- SPRT testovanie zmien: [Sequential Probability Ratio Test](https://en.wikipedia.org/wiki/Sequential_probability_ratio_test)
+  ako používa [Fishtest](https://github.com/glinscott/fishtest); Elo/LOS odhady
+  z binárnych výsledkov štandardným spôsobom (elocalc konvencie).
+- Test infra: [cutechess-cli](https://github.com/cutechess/cutechess) gauntlety,
+  opening knižnica LumbrasGigaBase; perft/legality referencie python-chess.
 
 ## Screenshoty
 
@@ -16,14 +56,13 @@ Grafický SDL mód:
 
 ![SDL mód](screenshots/sdl_mode.png)
 
-## TODO (priebežne)
+## Smer (priebežne)
 
-- Stabilizovať search heuristiky cez reprodukovateľný benchmark + SPRT workflow.
-- Priebežne retunovať eval/NNUE bez regresií v gate testoch.
-- Rozšíriť a udržiavať test sady (regresia, suite, TB smoke/verify).
-- Udržiavať dokumentáciu a test postupy v súlade s aktuálnym stavom engina.
-
-NNUE diagnostika (2026-10-06) je uzavretá: sieť v `EvalMode=2` je nekvalitná v king-danger režime (konvergentný signál zo sond 4/4, PGN mate kolapsov a scale auditu), pričom rýchle search-side zásahy (post-scale, all-off, null-off, futility-off) nepriniesli praktické zlepšenie; ďalší krok je iba retrain s cp labelmi a väčšou kapacitou.
+- Sila: NNUE iterácie, ladenie search konštánt, validované výhradne cez
+  SPRT + gauntlety (žiadne merge bez nich).
+- Rýchlosť: profilovanie search/eval hot spots.
+- TB: rozširovanie 5-piece coverage, korektnosť decode cez oracle.
+- Infra: prehlbovanie test matice, benchmark tracking.
 
 ## Kompilácia
 
