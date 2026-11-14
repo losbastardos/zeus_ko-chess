@@ -1304,6 +1304,11 @@ _start:
     call nnue3_load              ; v3 HalfKP (mmap); fail ak nie je ver=3
     test eax, eax
     jz .load_done
+    ; nnue3_load clobbruje rdi (fd), obnov cestu pre fallback v2
+    lea rdi, [key_nnue_file]
+    lea rsi, [default_nnue_file]
+    call config_get
+    mov rdi, rax
     call nnue2_load              ; fallback v2
 .load_done:
     test eax, eax
