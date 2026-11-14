@@ -126,13 +126,17 @@ tb_setup_pieces_piece:
 
 ; ============================================================
 ; tb_derive_enc_type_from_pieces0
-; Vstup: [tb_pieces], [tb_num]
+; Vstup: [board] (pozicia s materialom nacitanej tabulky), [tb_num]
 ; Vystup: eax = enc_type
-; Logika:
-; - j = pocet piece-kodov s presne 1 vyskytom
+; Logika (ako python-chess setup_pieces_piece / probe.c):
+; - j = pocet (farba,typ) instancii s presne 1 vyskytom, pocitane
+;   SEPARATNE pre bielu a ciernu stranu (kralie sa nezaratavaju)
 ; - ak j >= 3 -> enc_type=0
 ; - ak j == 2 -> enc_type=2
-; - inak enc_type = 1 + min_count_gt1
+; - inak enc_type = 1 + min_count_gt1 (per farba/typ)
+; Pozn.: povodne sa pocitalo cez zlucene tb_pieces[0] bez rozlisenia
+; farieb, co pre KQvKQ/KRvKR (0 singletonov) dalo enc_type=3 namiesto 0
+; a tym zly tb_size=1 -> nespravny WDL decode (delta 30/31).
 ; ============================================================
 tb_derive_enc_type_from_pieces0:
     push rbx
@@ -143,64 +147,79 @@ tb_derive_enc_type_from_pieces0:
     push r10
     push r11
 
-    xor r10d, r10d                ; j (singletons)
-    mov r11d, 255                 ; min_count_gt1 sentinel
-    xor ebx, ebx                  ; i
+    ; counting[0..5]  = biele P,N,B,R,Q,K; counting[6..11] = cierne
+    sub rsp, 48
+    lea rdi, [rsp]
+    xor eax, eax
+    mov ecx, 12
+.zero_loop:
+    mov dword [rdi + rcx*4 - 4], 0
+    loop .zero_loop
 
-.denc_i_loop:
-    cmp ebx, [tb_num]
-    jae .denc_finish_scan
+    ; jediny prechod board[64]
+    lea rdx, [board]
+    xor eax, eax
+.board_loop:
+    cmp eax, 64
+    jae .board_done
+    movzx ecx, byte [rdx + rax]
+    test ecx, ecx
+    jz .board_next
+    mov r8d, ecx
+    and r8d, 7                    ; typ
+    cmp r8d, PAWN
+    jb .board_next                ; prazdne(0) mimo rozsah
+    cmp r8d, KING
+    ja .board_next
+    ; index: PAWN..QUEEN -> 0..4, KING -> 5
+    cmp r8d, KING
+    je .idx_king
+    sub r8d, PAWN
+    jmp .idx_ready
+.idx_king:
+    mov r8d, 5
+.idx_ready:
+    test ecx, BLACK
+    jz .count_store
+    add r8d, 6                    ; cierna strana do horneho pola
+.count_store:
+    inc dword [rdi + r8*4]
+.board_next:
+    inc eax
+    jmp .board_loop
 
-    ; skip ak uz rovnaky kod bol skor
-    movzx eax, byte [tb_pieces + rbx]
-    xor ecx, ecx
-.denc_seen_loop:
-    cmp ecx, ebx
-    jae .denc_count
-    movzx edx, byte [tb_pieces + rcx]
-    cmp edx, eax
-    je .denc_i_next
-    inc ecx
-    jmp .denc_seen_loop
-
-.denc_count:
-    xor r8d, r8d
-    xor ecx, ecx
-.denc_count_loop:
-    cmp ecx, [tb_num]
-    jae .denc_classify
-    movzx edx, byte [tb_pieces + rcx]
-    cmp edx, eax
-    jne .denc_count_next
-    inc r8d
-.denc_count_next:
-    inc ecx
-    jmp .denc_count_loop
-
-.denc_classify:
-    cmp r8d, 1
-    jne .denc_multi
+.board_done:
+    ; j = pocet count==1; mincnt = min count>1
+    xor r10d, r10d                ; j
+    mov r11d, 255                 ; min_count_gt1
+    xor ebx, ebx
+.classify_loop:
+    cmp ebx, 12
+    jae .classify_done
+    mov eax, [rdi + rbx*4]
+    cmp eax, 1
+    jne .not_single
     inc r10d
-    jmp .denc_i_next
-
-.denc_multi:
-    cmp r8d, r11d
-    jae .denc_i_next
-    mov r11d, r8d
-
-.denc_i_next:
+    jmp .classify_next
+.not_single:
+    cmp eax, 2
+    jl .classify_next
+    cmp eax, r11d
+    jae .classify_next
+    mov r11d, eax
+.classify_next:
     inc ebx
-    jmp .denc_i_loop
+    jmp .classify_loop
 
-.denc_finish_scan:
+.classify_done:
+    add rsp, 48
     cmp r10d, 3
     jae .denc_enc0
     cmp r10d, 2
     je .denc_enc2
-
     cmp r11d, 255
     jne .denc_have_min
-    mov eax, 3                    ; fallback na enc_type=3 ak by nebolo multi
+    mov eax, 3                    ; fallback na enc_type=3 ak nebolo multi
     jmp .denc_done
 
 .denc_have_min:
