@@ -52,32 +52,46 @@ run_suite() {
     local line
     local score
 
-    out_file="$(mktemp)"
-    timeout "${timeout_sec}s" sh -c "printf 'uci\nsuite ${suite_file} ${depth}\nquit\n' | '$ENGINE_PATH' --uci" >"$out_file" 2>&1 || {
-        echo "ERROR: suite timed out or failed: $suite_file"
-        tail -n 20 "$out_file" || true
-        rm -f "$out_file"
-        exit 3
-    }
+    # E6-11 gate robustness (delta 42): suite je citliva na build layout
+    # (±3 hity) — bezi N behov a berie median.
+    local runs="${GATE_SUITE_RUNS:-3}"
+    local scores=()
+    local run_i line score
+    for ((run_i=1; run_i<=runs; run_i++)); do
+        out_file="$(mktemp)"
+        timeout "${timeout_sec}s" sh -c "printf 'uci\nsuite ${suite_file} ${depth}\nquit\n' | '$ENGINE_PATH' --uci" >"$out_file" 2>&1 || {
+            echo "ERROR: suite timed out or failed: $suite_file (run $run_i)"
+            tail -n 20 "$out_file" || true
+            rm -f "$out_file"
+            exit 3
+        }
 
-    line="$(grep 'suite result' "$out_file" | tail -n 1 || true)"
-    if [[ -z "$line" ]]; then
-        echo "ERROR: No suite result line for: $suite_file"
-        tail -n 20 "$out_file" || true
-        rm -f "$out_file"
-        exit 4
-    fi
+        line="$(grep 'suite result' "$out_file" | tail -n 1 || true)"
+        if [[ -z "$line" ]]; then
+            echo "ERROR: No suite result line for: $suite_file (run $run_i)"
+            tail -n 20 "$out_file" || true
+            rm -f "$out_file"
+            exit 4
+        fi
 
-    score="$(printf '%s' "$line" | sed -n 's/.*score=\([0-9]\+\/[0-9]\+\).*/\1/p')"
-    if [[ -z "$score" ]]; then
-        echo "ERROR: Could not parse score for: $suite_file"
-        echo "$line"
-        rm -f "$out_file"
-        exit 5
-    fi
+        parsed="$(printf '%s' "$line" | sed -n 's/.*score=\([0-9]\+\)\/\([0-9]\+\).*/\1 \2/p')"
+        if [[ -z "$parsed" ]]; then
+            echo "ERROR: Could not parse score for: $suite_file"
+            echo "$line"
+            rm -f "$out_file"
+            exit 5
+        fi
+        score="${parsed% *}"
+        total="${parsed#* }"
 
-    rm -f "$out_file"
-    echo "$score"
+        rm -f "$out_file"
+        scores+=("$score")
+    done
+
+    # median z N behov (zaokruhleny nadol — konzervativne)
+    local median
+    median="$(printf '%s\n' "${scores[@]}" | sort -n | awk -v n="${#scores[@]}" 'NR==int((n+1)/2){a=$1} NR==int((n+2)/2){b=$1} END{if (n%2) print a; else print int((a+b)/2)}')"
+    printf '%s/%s\n' "$median" "$total"
 }
 
 echo "[3/4] Running BF suite"
