@@ -979,7 +979,7 @@ uci_alloc_time:
     movzx edx, byte [search_limits + 2] ; movestogo
     test edx, edx
     jnz .have_mtg
-    mov edx, 30
+    mov edx, 24                         ; E6-11: fallback mtg 30->24 (bullet budget +~19 %)
 .have_mtg:
     mov r8d, edx
     xor rdx, rdx
